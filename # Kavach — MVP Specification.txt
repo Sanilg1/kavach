@@ -1,0 +1,994 @@
+# Kavach — MVP Specification
+
+> **Compress the delivery, not the knowledge.**
+
+## 1. Product
+
+**Kavach** converts educational PDFs into structured, source-grounded revision shorts.
+
+A student uploads a PDF, Kavach understands the material, identifies important concepts, recommends a learning order, and generates short whiteboard lessons with AI narration and quick checks.
+
+### Target users
+
+* School students
+* College students
+* Students revising before exams
+* Students working through dense technical study material
+
+### MVP input
+
+* One PDF per session
+* Maximum **60 pages**
+* Text-based PDFs
+* Image/diagram extraction where practical
+* OCR for scanned PDFs
+* English content and narration
+
+---
+
+# 2. Core User Flow
+
+```text
+Upload PDF
+    ↓
+Analyze document
+    ↓
+Check PDF suitability
+    ↓
+Generate topic map
+    ↓
+Recommend learning order
+    ↓
+Student adds/removes topics
+    ↓
+Generate revision shorts
+    ↓
+Watch whiteboard lesson
+    ↓
+Source references
+    ↓
+Quick check
+    ↓
+Optional follow-up question
+```
+
+---
+
+# 3. MVP Features
+
+## 3.1 PDF Upload
+
+Student uploads a PDF.
+
+### Requirements
+
+* Maximum 60 pages
+* Validate file type
+* Validate page count
+* Store original PDF in Amazon S3
+* Generate a unique `document_id`
+* Display processing status
+
+### Statuses
+
+```text
+UPLOADED
+PROCESSING
+ANALYZING
+READY
+GENERATING
+COMPLETED
+FAILED
+```
+
+---
+
+# 4. PDF Analysis
+
+Kavach should analyze the document before generating videos.
+
+### Extract
+
+* Text
+* Headings
+* Sections
+* Important concepts
+* Definitions
+* Relationships between concepts
+* Tables
+* Diagrams/images where practical
+* Equations/formulas
+* Source page numbers
+
+### PDF suitability check
+
+Before generation, return:
+
+```json
+{
+  "suitable": true,
+  "page_count": 48,
+  "quality": "good",
+  "warnings": [],
+  "recommendations": []
+}
+```
+
+If the PDF is difficult to process:
+
+```json
+{
+  "suitable": false,
+  "quality": "poor",
+  "warnings": [
+    "Several pages contain low-quality scanned text."
+  ]
+}
+```
+
+The user can decide whether to continue.
+
+---
+
+# 5. Brain AI
+
+## Responsibility
+
+Amazon Bedrock acts as the **Brain AI**.
+
+It should not simply summarize the PDF.
+
+It should create a **teaching plan**.
+
+### Brain AI tasks
+
+1. Understand the document
+2. Identify concepts
+3. Identify relationships/prerequisites
+4. Build a learning order
+5. Recommend important topics
+6. Estimate number of shorts
+7. Decide whether a topic needs multiple shorts
+8. Generate scripts
+9. Generate visual instructions
+10. Generate source references
+11. Generate quick-check questions
+12. Identify uncertainty
+13. Separate PDF knowledge from AI-added context
+
+---
+
+# 6. Topic Map
+
+After analysis, display:
+
+```text
+Computer Networks
+
+01. Network Fundamentals
+02. OSI Model
+03. TCP/IP
+04. TCP vs UDP
+05. TCP Three-Way Handshake
+06. Flow Control
+07. Congestion Control
+08. DNS
+09. HTTP/HTTPS
+```
+
+Each topic should show:
+
+```text
+Topic
+Estimated shorts
+Estimated duration
+Source pages
+Recommended position
+```
+
+Example:
+
+```text
+TCP Three-Way Handshake
+
+2 shorts
+~90 seconds
+Pages 24–26
+
+Recommended after:
+TCP fundamentals
+```
+
+---
+
+# 7. Student Customization
+
+The AI recommends topics, but the student controls the final selection.
+
+Student can:
+
+* Add topics
+* Remove topics
+* Keep recommended topics
+* Reorder if desired
+
+The system should then regenerate the learning plan.
+
+---
+
+# 8. Learning Order
+
+The Brain AI recommends an order based on:
+
+* Prerequisites
+* Concept relationships
+* Difficulty
+* Logical teaching progression
+
+Example:
+
+```text
+TCP fundamentals
+       ↓
+Connection establishment
+       ↓
+Three-way handshake
+       ↓
+Flow control
+       ↓
+Congestion control
+```
+
+No mastery score is required for the MVP.
+
+---
+
+# 9. Revision Shorts
+
+Each selected topic becomes one or more short lessons.
+
+### Constraints
+
+* Target duration: **30–60 seconds**
+* AI decides the number of shorts
+* AI decides the appropriate duration
+* A large topic may become multiple shorts
+* Each short should explain a coherent concept
+
+Example:
+
+```text
+TCP Three-Way Handshake
+
+Short 1:
+Why TCP needs a handshake
+
+Short 2:
+SYN → SYN-ACK → ACK
+```
+
+---
+
+# 10. Teaching Plan JSON
+
+Bedrock should produce structured JSON rather than unstructured prose.
+
+Example:
+
+```json
+{
+  "topic": "TCP Three-Way Handshake",
+  "learning_order": 5,
+  "parts": [
+    {
+      "part": 1,
+      "title": "Why TCP Needs a Handshake",
+      "duration_target": 42,
+      "script": "Before TCP can transfer application data...",
+      "visual_plan": [
+        "Draw client",
+        "Draw server",
+        "Show connection request",
+        "Animate the initial exchange"
+      ],
+      "sources": [24, 25],
+      "ai_added_context": []
+    }
+  ],
+  "quick_check": {
+    "question": "Why does TCP use a three-way handshake?",
+    "options": [
+      "To establish connection state",
+      "To encrypt all traffic",
+      "To increase bandwidth",
+      "To resolve DNS"
+    ],
+    "answer": 0
+  }
+}
+```
+
+This JSON is the contract between the **Brain AI** and the video renderer.
+
+---
+
+# 11. Whiteboard Video Generation
+
+## Design principle
+
+Videos should look like a clean educational whiteboard.
+
+Not:
+
+* Cinematic AI scenes
+* Avatars
+* Flashy transitions
+* Random stock footage
+
+Instead:
+
+* White background
+* Hand-drawn/educational visual style
+* Diagrams
+* Arrows
+* Labels
+* Equations
+* Highlighting
+* Simple animations
+
+---
+
+# 12. Visual Renderer
+
+The renderer converts the Bedrock teaching plan into a video.
+
+### Supported primitives
+
+```text
+TEXT
+BOX
+CIRCLE
+LINE
+ARROW
+DIAGRAM
+EQUATION
+TABLE
+HIGHLIGHT
+IMAGE
+FLOW
+TIMELINE
+```
+
+### Supported animations
+
+```text
+DRAW
+WRITE
+FADE_IN
+FADE_OUT
+MOVE
+HIGHLIGHT
+ARROW_FLOW
+SEQUENTIAL_REVEAL
+```
+
+The renderer should be deterministic.
+
+The AI specifies **what should be shown**.
+
+The renderer decides **how to render the primitive**.
+
+---
+
+# 13. Narration
+
+Use **Amazon Polly**.
+
+Pipeline:
+
+```text
+Teaching Plan
+     ↓
+Script
+     ↓
+Amazon Polly
+     ↓
+Audio
+```
+
+Requirements:
+
+* English
+* One consistent voice
+* Clear educational delivery
+* Synchronize narration with visual scenes where practical
+
+---
+
+# 14. Video Assembly
+
+```text
+Visual scenes
+      +
+Polly narration
+      ↓
+    FFmpeg
+      ↓
+   MP4 video
+```
+
+Target:
+
+```text
+Resolution: 720p or 1080p
+Format: MP4
+Duration: 30–60 seconds
+```
+
+---
+
+# 15. Source Grounding
+
+Every generated short should show its source.
+
+Example:
+
+```text
+Sources
+PDF — Pages 24–26
+```
+
+If AI adds information not explicitly contained in the PDF:
+
+```text
+AI-added context
+```
+
+This distinction must be visible to the student.
+
+---
+
+# 16. Accuracy Behavior
+
+The PDF is the primary source of truth.
+
+The system should **not silently invent an interpretation** when the source is ambiguous.
+
+Example:
+
+```json
+{
+  "uncertainty": true,
+  "reason": "The diagram on page 31 is partially unreadable.",
+  "source_pages": [31]
+}
+```
+
+The user should be warned when source quality limits confidence.
+
+---
+
+# 17. Quick Checks
+
+After every short, show one or more quick questions.
+
+Questions should test understanding rather than simple recall where practical.
+
+Example:
+
+> What is the purpose of the third ACK in TCP?
+
+```text
+A. Encrypt the connection
+B. Confirm receipt of SYN-ACK
+C. Resolve the server's IP
+D. Increase packet size
+```
+
+Show the correct answer after the student responds.
+
+---
+
+# 18. Follow-up Q&A
+
+Optional MVP feature.
+
+After watching a short, the student can ask:
+
+> "Why does the server send SYN-ACK instead of just ACK?"
+
+The AI should answer using:
+
+1. Original PDF
+2. Generated lesson context
+3. Relevant AI-added context, if enabled
+
+Answers should include source references where possible.
+
+---
+
+# 19. Feedback & Regeneration
+
+After each video:
+
+```text
+How was this explanation?
+
+👍 Good
+🤔 Didn't understand
+🐢 Too fast
+🧠 Too difficult
+🔄 Explain differently
+```
+
+If the student chooses a negative option, regenerate the lesson with an adjusted teaching approach.
+
+Example:
+
+```text
+Didn't understand
+       ↓
+Bedrock
+       ↓
+Simpler explanation
+       ↓
+New visual plan
+       ↓
+New video
+```
+
+---
+
+# 20. AI-Enhanced Mode
+
+### Default mode
+
+Only use the uploaded PDF as the knowledge source.
+
+### AI-Enhanced mode
+
+Bedrock may add external/general knowledge to improve understanding.
+
+Any added material must be explicitly marked:
+
+```text
+AI-added context
+```
+
+The distinction between source material and generated context must remain visible.
+
+---
+
+# 21. Optional Combined Lesson
+
+If time permits, generate a longer lesson from the individual shorts.
+
+```text
+Short 1
+   +
+Short 2
+   +
+Short 3
+   +
+Short 4
+   ↓
+Combined Lesson
+```
+
+This is secondary to the short-form experience.
+
+---
+
+# 22. AWS Architecture
+
+```text
+                     STUDENT
+                        │
+                        ▼
+                AWS Amplify
+                   Frontend
+                        │
+                        ▼
+                 API Gateway
+                        │
+                        ▼
+                     Lambda
+                        │
+             ┌──────────┴──────────┐
+             ▼                     ▼
+          Amazon S3           DynamoDB
+          PDF storage         Metadata
+             │
+             ▼
+        PDF Processing
+             │
+             ▼
+       Amazon Bedrock
+          Brain AI
+             │
+       Teaching Plan
+            JSON
+             │
+       ┌─────┴──────┐
+       ▼            ▼
+   Amazon Polly   Renderer
+    Narration     Whiteboard
+       │            │
+       └──────┬─────┘
+              ▼
+            FFmpeg
+              │
+              ▼
+             MP4
+              │
+              ▼
+             S3
+              │
+              ▼
+       Amplify Student Feed
+```
+
+---
+
+# 23. AWS Services
+
+| Service        | Purpose                                         |
+| -------------- | ----------------------------------------------- |
+| Amazon S3      | PDF, JSON, audio and video storage              |
+| Amazon Bedrock | Document reasoning and teaching-plan generation |
+| AWS Lambda     | Backend processing/orchestration                |
+| API Gateway    | REST/HTTP API                                   |
+| DynamoDB       | Document/topic/video metadata                   |
+| Amazon Polly   | AI narration                                    |
+| Amplify        | Frontend hosting/deployment                     |
+
+---
+
+# 24. Suggested S3 Structure
+
+```text
+kavach/
+│
+├── uploads/
+│   └── {document_id}.pdf
+│
+├── processed/
+│   ├── {document_id}/chunks.json
+│   └── {document_id}/topic_map.json
+│
+├── teaching-plans/
+│   └── {document_id}/teaching_plan.json
+│
+├── audio/
+│   └── {document_id}/{reel_id}.mp3
+│
+└── videos/
+    └── {document_id}/{reel_id}.mp4
+```
+
+---
+
+# 25. DynamoDB
+
+## Documents
+
+```text
+document_id
+filename
+page_count
+status
+quality
+estimated_shorts
+estimated_duration
+created_at
+```
+
+## Topics
+
+```text
+document_id
+topic_id
+name
+learning_order
+source_pages
+estimated_shorts
+estimated_duration
+selected
+```
+
+## Reels
+
+```text
+reel_id
+document_id
+topic_id
+part
+title
+duration
+status
+video_s3_key
+source_pages
+```
+
+---
+
+# 26. Backend API
+
+### Upload
+
+```http
+POST /documents
+```
+
+### Document status
+
+```http
+GET /documents/{document_id}
+```
+
+### Topic map
+
+```http
+GET /documents/{document_id}/topics
+```
+
+### Update topics
+
+```http
+POST /documents/{document_id}/topics
+```
+
+### Generate reels
+
+```http
+POST /documents/{document_id}/generate
+```
+
+### Reel list
+
+```http
+GET /documents/{document_id}/reels
+```
+
+### Regenerate
+
+```http
+POST /reels/{reel_id}/regenerate
+```
+
+### Ask question
+
+```http
+POST /reels/{reel_id}/ask
+```
+
+---
+
+# 27. Frontend Screens
+
+## Screen 1 — Upload
+
+```text
+┌─────────────────────────────┐
+│          KAVACH             │
+│                             │
+│   Turn your PDF into        │
+│   revision shorts           │
+│                             │
+│     [ Upload PDF ]          │
+│                             │
+│       Max 60 pages          │
+└─────────────────────────────┘
+```
+
+## Screen 2 — Analysis
+
+```text
+Analyzing your PDF...
+
+✓ Reading document
+✓ Identifying concepts
+✓ Building concept relationships
+✓ Creating learning path
+
+14 concepts found
+```
+
+## Screen 3 — Topic Map
+
+```text
+Your Revision Path
+
+✓ TCP Fundamentals
+✓ TCP vs UDP
+✓ Three-Way Handshake
+✓ Flow Control
+□ Congestion Control
+
+Estimated:
+12 shorts
+~9 minutes
+```
+
+Buttons:
+
+```text
+[ + Add Topic ] [ Continue ]
+```
+
+## Screen 4 — Reel Feed
+
+```text
+TCP Three-Way Handshake
+
+      ▶ VIDEO
+
+45 seconds
+
+Sources:
+PDF pages 24–26
+
+[ Quick Check ]
+[ Ask a Question ]
+```
+
+## Screen 5 — Quick Check
+
+```text
+What does the third ACK accomplish?
+
+○ Establishes encryption
+○ Confirms SYN-ACK
+○ Resolves DNS
+○ Compresses data
+
+[ Submit ]
+```
+
+---
+
+# 28. MVP Success Criteria
+
+The MVP is considered complete when a user can:
+
+* [ ] Upload a PDF
+* [ ] Store it in S3
+* [ ] Analyze it with Bedrock
+* [ ] Receive a topic map
+* [ ] See recommended learning order
+* [ ] Add/remove topics
+* [ ] Generate a teaching plan
+* [ ] Generate at least one short
+* [ ] Generate narration with Polly
+* [ ] Render whiteboard visuals
+* [ ] Produce an MP4
+* [ ] Store the MP4 in S3
+* [ ] Watch the short in the frontend
+* [ ] See PDF source pages
+* [ ] Answer a quick-check question
+* [ ] Demonstrate AWS services in the final demo
+
+---
+
+# 29. Hackathon MVP Priority
+
+## P0 — Must Work
+
+```text
+PDF
+ ↓
+S3
+ ↓
+Bedrock
+ ↓
+Teaching Plan
+ ↓
+Whiteboard Renderer
+ ↓
+Polly
+ ↓
+FFmpeg
+ ↓
+MP4
+ ↓
+Frontend
+```
+
+## P1 — Important
+
+* Topic selection
+* Learning order
+* Source references
+* Quick checks
+* Multiple shorts
+
+## P2 — If Time Allows
+
+* Follow-up Q&A
+* Feedback-based regeneration
+* AI-enhanced mode
+* Combined lesson
+* OCR improvements
+
+---
+
+# 30. Explicitly Out of Scope
+
+The MVP will **not** attempt to provide:
+
+* Multiple simultaneous PDFs
+* Full textbook/course management
+* User accounts and complex authentication
+* Mobile application
+* Advanced learning analytics
+* Mastery scoring
+* Real-time collaborative learning
+* Arbitrary cinematic AI video generation
+* Manual video editing
+* Multiple narration languages
+* Perfect support for every PDF layout
+* Guaranteed extraction of unreadable scans
+
+---
+
+# 31. Demo PDF
+
+Use a technical educational PDF with concepts that are naturally visualized.
+
+Recommended examples:
+
+* Computer Networks
+* Cybersecurity fundamentals
+* Operating Systems
+* DBMS
+* Machine Learning fundamentals
+
+Ideal demo concept:
+
+```text
+TCP Three-Way Handshake
+```
+
+because it naturally maps to:
+
+```text
+Client
+   │
+ SYN
+   ↓
+Server
+   │
+ SYN-ACK
+   ↓
+Client
+   │
+ ACK
+   ↓
+Connection established
+```
+
+This makes the value of the whiteboard renderer immediately visible.
+
+---
+
+# 32. Product Principle
+
+## Compress the delivery, not the knowledge.
+
+Kavach should not merely summarize a 60-page PDF into five bullet points.
+
+It should preserve the important knowledge while changing its **delivery format**:
+
+```text
+Dense PDF
+    ↓
+Structured knowledge
+    ↓
+Learning path
+    ↓
+Short visual lessons
+    ↓
+Active recall
+```
+
+The goal is **faster revision without throwing away the substance of the source material**.

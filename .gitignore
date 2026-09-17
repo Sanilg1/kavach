@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+backend/data/
+backend/.env
+backend/assets/fonts/*.ttf
+
+# node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# misc
+.DS_Store
+*.log

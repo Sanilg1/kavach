@@ -1,0 +1,192 @@
+# Kavach — MVP
+
+> **Compress the delivery, not the knowledge.**
+
+Kavach turns an educational PDF (≤ 60 pages) into a learning path of 30–60 second
+**whiteboard revision shorts** with AI narration, PDF source references, quick-check
+questions, follow-up Q&A and feedback-driven regeneration.
+
+```
+PDF ─▶ S3 ─▶ text extraction + suitability check ─▶ Bedrock (Brain AI) ─▶ topic map / learning order
+     ─▶ student picks topics ─▶ Bedrock teaching plan JSON ─▶ Polly narration + whiteboard renderer
+     ─▶ FFmpeg MP4 ─▶ S3 ─▶ React feed (video · sources · quick check · ask · feedback)
+```
+
+Everything runs **end to end on a laptop with no AWS account** (mock Brain, local files,
+Windows speech or silent narration) and switches to **S3 + DynamoDB + Bedrock + Polly** with
+environment variables.
+
+---
+
+## Repository layout
+
+```
+backend/                 FastAPI service + pipeline (Python 3.11+)
+  app/main.py            REST API (spec §26) + Lambda handler (Mangum)
+  app/pipeline.py        analyze → topic map → plan → narrate → render → MP4
+  app/pdf/extract.py     pypdfium2 text extraction, headings, page thumbnails, OCR hook, suitability check
+  app/brain/prompts.py   Brain AI prompts = the renderer contract in prose
+  app/brain/client.py    Claude in Amazon Bedrock (Anthropic SDK Mantle client) · boto3 Converse fallback · mock
+  app/brain/planner.py   validation/normalisation of topic maps and teaching plans
+  app/brain/mock.py      offline brain (uses the PDF text) + hand-written TCP handshake demo plan
+  app/render/renderer.py deterministic whiteboard renderer (12 primitives, 8 animations)
+  app/tts/synth.py       Amazon Polly · Windows SAPI · silent mock
+  app/video/ffmpeg.py    bundled FFmpeg (imageio-ffmpeg) or system ffmpeg
+  app/storage.py         S3 or local filesystem (spec §24 key layout)
+  app/db.py              DynamoDB or local JSON (spec §25 tables)
+  app/models.py          Teaching Plan JSON contract (spec §10) + API models
+  scripts/make_demo_pdf.py   generates the Computer Networks demo PDF
+  scripts/smoke_test.py      runs the whole pipeline in-process (local or AWS)
+  scripts/aws_setup.py       creates S3 bucket + DynamoDB tables, checks Bedrock/Polly, prints IAM policy
+  Dockerfile             container for App Runner / ECS / Lambda
+frontend/                Vite + React + TypeScript (Amplify-hostable)
+  src/components/        Upload · Analysis · TopicMap · ReelFeed/ReelCard · QuickCheck
+```
+
+---
+
+## 1. Run locally (no AWS)
+
+**Prereqs:** Python 3.11+, Node 18+. FFmpeg is bundled via pip; no system install needed.
+
+```powershell
+# backend
+cd backend
+python -m pip install -r requirements.txt
+copy .env.example .env            # defaults are already local mode
+.\run_local.ps1                   # or: python -m uvicorn app.main:app --port 8000
+# (macOS/Linux: ./run_local.sh)
+
+# frontend (second terminal)
+cd frontend
+npm install
+npm run dev                       # http://localhost:5173  (API: http://localhost:8000)
+```
+
+Open http://localhost:5173, upload `backend/assets/demo_computer_networks.pdf`
+(created on first run) and click through Upload → Analyze → Topics → Shorts.
+
+In local mode:
+- **Brain** = `mock` — builds the topic map from the PDF's headings and generic lessons from
+  its text; the *TCP Three-Way Handshake* topic gets a hand-written, high-quality plan so the
+  renderer can be demoed properly.
+- **Narration** = `auto` — Windows built-in speech if available, otherwise timed silence.
+- Files go to `backend/data/storage/`, metadata to `backend/data/kavach_db.json`.
+
+Quick check without the UI:
+
+```powershell
+cd backend
+python scripts/smoke_test.py        # analyses the demo PDF and renders the handshake shorts
+```
+
+---
+
+## 2. Run with real AWS services
+
+```powershell
+cd backend
+$env:AWS_REGION="us-east-1"
+$env:KAVACH_S3_BUCKET="<globally-unique-bucket>"
+python scripts/aws_setup.py         # creates bucket + tables, tests Bedrock and Polly, prints IAM policy
+```
+
+Then set in `backend/.env`:
+
+```
+KAVACH_MODE=aws
+AWS_REGION=us-east-1
+KAVACH_S3_BUCKET=<bucket>
+KAVACH_BEDROCK_MODEL=anthropic.claude-opus-5      # Claude in Amazon Bedrock model id
+KAVACH_POLLY_VOICE=Matthew
+```
+
+and start the backend as above. Credentials come from the usual AWS chain
+(`aws configure`, env vars, or an IAM role). Validate with
+`python scripts/smoke_test.py` (prints presigned S3 URLs for the MP4s).
+
+Notes
+- The Brain uses the Anthropic SDK's `AnthropicBedrockMantle` client (Messages API on
+  Bedrock). If your account only has legacy Bedrock model ids
+  (e.g. `anthropic.claude-3-5-sonnet-20241022-v2:0`), set `KAVACH_BRAIN=converse` and
+  `KAVACH_BEDROCK_MODEL=<that id>` — the same prompts run through boto3 `converse()`.
+- Pieces can be mixed: e.g. `KAVACH_MODE=local` + `KAVACH_BRAIN=bedrock` + `KAVACH_TTS=polly`
+  keeps files on disk but uses real AI.
+- `KAVACH_BRAIN_EFFORT` (`low|medium|high`) trades quality for latency per topic.
+
+---
+
+## 3. Deploy
+
+**Backend (container):**
+
+```bash
+cd backend
+docker build -t kavach-backend .
+# push to ECR, then run on AWS App Runner (simplest) or ECS Fargate with the env vars above
+# and an IAM role carrying the policy printed by scripts/aws_setup.py.
+```
+
+Generation runs in background threads inside the container (`KAVACH_WORKERS`). The image
+also exposes `app.main.handler` (Mangum) so the API can run as a Lambda container image
+behind API Gateway; for that layout move `generate_document` / `regenerate_reel` into a
+second Lambda (or Step Functions) triggered by the API so long renders are not bound by the
+API timeout — the pipeline functions are already self-contained for this.
+
+**Frontend (Amplify Hosting):** connect the repo, app root `frontend/` (`amplify.yml` is
+included), and set the environment variable `VITE_API_URL=https://<backend-url>`.
+Set `KAVACH_CORS_ORIGINS=https://<amplify-domain>` on the backend.
+
+---
+
+## API (spec §26)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/documents` | upload PDF (multipart `file`) → `document_id`, analysis starts |
+| GET | `/documents/{id}` | status (`UPLOADED…COMPLETED/FAILED`), suitability, estimates |
+| GET | `/documents/{id}/topics` | topic map + recommended learning order |
+| POST | `/documents/{id}/topics` | `{selected_topic_ids, order, added_topics}` |
+| POST | `/documents/{id}/generate` | `{ai_enhanced}` → shorts generated in background |
+| GET | `/documents/{id}/reels` | reel feed with video URLs, sources, quick checks |
+| GET | `/reels/{reel_id}` | one reel |
+| POST | `/reels/{reel_id}/regenerate` | `{feedback: didnt_understand\|too_fast\|too_difficult\|explain_differently}` |
+| POST | `/reels/{reel_id}/ask` | `{question, ai_enhanced}` → grounded answer with page refs |
+| POST | `/reels/{reel_id}/feedback` | record 👍 etc. |
+| GET | `/reels/{reel_id}/plan` | the Teaching Plan JSON behind a reel |
+
+---
+
+## Teaching Plan → renderer contract
+
+The Brain returns structured JSON (`app/models.py: TeachingPlan`). Each part is a list of
+scenes; each scene has narration plus elements in a 0–100 coordinate space:
+
+```json
+{"narration": "The client starts by sending a SYN segment...",
+ "clear": false,
+ "elements": [
+   {"id": "client", "type": "BOX", "label": "Client", "x": 18, "y": 30, "w": 18, "h": 11, "color": "blue", "animation": "DRAW"},
+   {"id": "syn", "type": "ARROW", "from": "client", "to": "server", "label": "1. SYN (seq = x)", "animation": "ARROW_FLOW"}
+ ]}
+```
+
+Primitives: `TEXT BOX CIRCLE LINE ARROW DIAGRAM EQUATION TABLE HIGHLIGHT IMAGE FLOW TIMELINE`
+Animations: `DRAW WRITE FADE_IN FADE_OUT MOVE HIGHLIGHT ARROW_FLOW SEQUENTIAL_REVEAL`
+
+The renderer is deterministic: narration is synthesised per scene, scene length comes from
+the audio, element animations are scheduled across it, frames are drawn with Pillow
+(hand-drawn wobble strokes, handwriting font) and piped to FFmpeg with the narration track.
+
+---
+
+## MVP success criteria (spec §28)
+
+Upload · S3 · Bedrock analysis · topic map · learning order · add/remove topics ·
+teaching plan · shorts · Polly narration · whiteboard render · MP4 · S3 · watch in frontend ·
+source pages · quick check — all implemented, plus P1/P2: multiple shorts per topic,
+follow-up Q&A, feedback regeneration, AI-enhanced mode with visible "AI-added context",
+uncertainty warnings, suitability check and an OCR hook (`pip install pytesseract` +
+Tesseract binary to enable).
+
+Not in the MVP: accounts, multiple PDFs per session, combined lesson, mobile app.
