@@ -177,6 +177,7 @@ Animations: `DRAW WRITE FADE_IN FADE_OUT MOVE HIGHLIGHT ARROW_FLOW SEQUENTIAL_RE
 The renderer is deterministic: narration is synthesised per scene, scene length comes from
 the audio, element animations are scheduled across it, frames are drawn with Pillow
 (hand-drawn wobble strokes, handwriting font) and piped to FFmpeg with the narration track.
+Shorts are portrait 9:16 (720x1280) by default; set `KAVACH_VIDEO_WIDTH/HEIGHT` for other sizes.
 
 ---
 

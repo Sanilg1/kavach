@@ -462,8 +462,11 @@ h3 {
 
 .reel .video {
   background: #111;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 9 / 16;
   position: relative;
+  width: min(100%, 420px);
+  margin: 0 auto;
+  overflow: hidden;
 }
 
 .reel video {

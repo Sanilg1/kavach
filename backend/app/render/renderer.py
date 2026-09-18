@@ -76,7 +76,8 @@ class Renderer:
     def __init__(self, width: int, height: int, fps: int,
                  page_image: Optional[Callable[[int], Optional[Image.Image]]] = None, footer: str = ""):
         self.W, self.H, self.fps = width, height, fps
-        self.s = height / 720.0                    # scale factor relative to 720p
+        self.base = min(width, height)             # short side: 720 for both 720x1280 and 1280x720
+        self.s = self.base / 720.0                 # scale factor for strokes, offsets, fonts
         self.page_image = page_image
         self.footer = footer
         self.scenes: list[SceneTiming] = []
@@ -94,7 +95,7 @@ class Renderer:
         return y / 100.0 * self.H
 
     def font_px(self, size: str) -> int:
-        return int({"title": 0.064, "large": 0.05, "normal": 0.038, "small": 0.03}.get(size, 0.038) * self.H)
+        return int({"title": 0.064, "large": 0.05, "normal": 0.038, "small": 0.03}.get(size, 0.038) * self.base)
 
     def stroke(self, k: float = 1.0) -> int:
         return max(2, int(round(3 * self.s * k)))
@@ -206,7 +207,7 @@ class Renderer:
 
     def _measure_text(self, el: Element, center100: Point, max_w100: Optional[float] = None) -> BBox:
         font = get_font(self.font_px(el.size))
-        lines = self._wrap(el.text, font, self.px(max_w100 or el.w or 64))
+        lines = self._wrap(el.text, font, self.px(max_w100 or el.w or 86))
         lh = font.size * 1.25
         w = max((font.getlength(l) for l in lines), default=0)
         h = lh * len(lines)
@@ -347,7 +348,7 @@ class Renderer:
     def _text_lines(self, draw, el_size: str, text: str, center: Point, color, reveal: float = 1.0,
                     max_w: Optional[float] = None, anchor_top: bool = False) -> BBox:
         font = get_font(self.font_px(el_size))
-        lines = self._wrap(text, font, max_w or self.px(64))
+        lines = self._wrap(text, font, max_w or self.px(86))
         lh = font.size * 1.25
         total_chars = sum(len(l) for l in lines) or 1
         shown = int(round(reveal * total_chars)) if reveal < 1 else total_chars
@@ -635,7 +636,7 @@ class Renderer:
         img = Image.new("RGB", (self.W, self.H), BG)
         if self.footer:
             d = ImageDraw.Draw(img)
-            font = get_font(int(self.H * 0.026))
+            font = get_font(int(self.base * 0.026))
             d.text((self.W - 18 * self.s, self.H - 12 * self.s), self.footer, font=font, fill=_color("grey"), anchor="rd")
             d.text((18 * self.s, self.H - 12 * self.s), "Kavach", font=font, fill=_color("grey"), anchor="ld")
         return img

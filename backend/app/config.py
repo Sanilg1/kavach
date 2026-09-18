@@ -42,8 +42,8 @@ class Settings:
     DATA_DIR = Path(_env("KAVACH_DATA_DIR", str(BACKEND_DIR / "data")))
     WORK_DIR = Path(_env("KAVACH_WORK_DIR", str(BACKEND_DIR / "data" / "work")))
 
-    VIDEO_WIDTH = int(_env("KAVACH_VIDEO_WIDTH", "1280"))
-    VIDEO_HEIGHT = int(_env("KAVACH_VIDEO_HEIGHT", "720"))
+    VIDEO_WIDTH = int(_env("KAVACH_VIDEO_WIDTH", "720"))     # portrait 9:16 shorts
+    VIDEO_HEIGHT = int(_env("KAVACH_VIDEO_HEIGHT", "1280"))
     VIDEO_FPS = int(_env("KAVACH_VIDEO_FPS", "24"))
     FONT_PATH = _env("KAVACH_FONT", "")
 

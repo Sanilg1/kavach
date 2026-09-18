@@ -81,8 +81,12 @@ SHORT DESIGN
   abbreviations on first use, avoid reading out symbols that are on the board.
 
 COORDINATES: x,y are the element CENTER in a 0-100 space (x right, y down). w,h are
-sizes in the same units. Keep the title around y=8 and content between y=18 and y=92.
-Leave margins (x 6-94). Do not overlap elements.
+sizes in the same units. The board is PORTRAIT, phone-shaped (9:16, 720x1280 px): one
+unit of y is 1.8x taller than one unit of x, and the board is narrow. Design for a tall
+board: stack ideas vertically, use FLOW with direction "vertical", put client/server
+diagrams top-to-bottom or as two columns with messages zig-zagging down, keep TABLEs to
+2-3 columns, keep TEXT lines short (<= 5 words per line). Keep the title around y=6 and
+content between y=14 and y=94. Leave margins (x 6-94). Do not overlap elements.
 
 PRIMITIVES (field "type") and their fields:
 - TEXT: text, size (title|large|normal|small), color. A title uses size "title".
