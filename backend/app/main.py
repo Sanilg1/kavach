@@ -10,6 +10,8 @@ GET  /reels/{reel_id}                one reel
 POST /reels/{reel_id}/regenerate     feedback-driven regeneration
 POST /reels/{reel_id}/ask            follow-up question
 POST /reels/{reel_id}/feedback       record feedback (no regeneration)
+POST /documents/{id}/combine         build one combined lesson MP4 from all shorts
+GET  /documents/{id}/notes.md        downloadable revision notes (scripts + quick checks)
 GET  /media/{key}                    local-storage media (S3 mode returns presigned URLs instead)
 """
 from __future__ import annotations
@@ -47,6 +49,7 @@ def _media_url(key: str | None) -> str | None:
 def _public_doc(doc: dict) -> dict:
     d = dict(doc)
     d.pop("error_trace", None)
+    d["combined_url"] = _media_url(d.get("combined_video_key")) if d.get("combined_status") == "COMPLETED" else None
     return d
 
 
@@ -158,6 +161,35 @@ def list_reels(doc_id: str):
         raise HTTPException(404, "Document not found")
     reels = [_public_reel(r) for r in db.list_reels(doc_id) if not r.get("hidden")]
     return {"document_id": doc_id, "status": doc.get("status"), "progress": doc.get("progress"), "reels": reels}
+
+
+@app.post("/documents/{doc_id}/combine")
+def combine(doc_id: str):
+    doc = db.get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc.get("status") == "GENERATING":
+        raise HTTPException(409, "Wait for generation to finish")
+    if doc.get("combined_status") == "BUILDING":
+        raise HTTPException(409, "Combined lesson is already being built")
+    if not any(r.get("status") == "COMPLETED" for r in db.list_reels(doc_id)):
+        raise HTTPException(400, "No completed shorts yet")
+    db.update_document(doc_id, combined_status="BUILDING")
+    worker.submit(pipeline.combine_document, doc_id)
+    return {"document_id": doc_id, "combined_status": "BUILDING"}
+
+
+@app.get("/documents/{doc_id}/notes.md")
+def notes(doc_id: str):
+    from fastapi.responses import PlainTextResponse
+
+    doc = db.get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    md = pipeline.notes_markdown(doc_id)
+    name = (doc.get("title") or "kavach-notes").replace('"', "")[:60]
+    return PlainTextResponse(md, media_type="text/markdown; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{name}.md"'})
 
 
 # ---------------------------------------------------------------- reels

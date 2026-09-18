@@ -187,6 +187,20 @@ Shorts are portrait 9:16 (720x1280) by default; set `KAVACH_VIDEO_WIDTH/HEIGHT` 
 
 ---
 
+## Beyond the spec
+
+- **Synced captions**: Polly word-level speech marks drive a caption band with the spoken
+  word highlighted (shorts are often watched muted); offline backends estimate timings.
+- **Vision-grounded Brain**: the PDF itself is attached to the topic-map call and page
+  images of the source pages to each teaching-plan call, so diagrams, tables and equations
+  that text extraction loses still make it into the lesson (`KAVACH_BRAIN_VISION`).
+- **Parallel planning**: several topics are planned on Bedrock concurrently while earlier
+  ones render (`KAVACH_PLAN_CONCURRENCY`).
+- **Combined lesson** (`POST /documents/{id}/combine`): all shorts stitched into one MP4.
+- **Revision notes** (`GET /documents/{id}/notes.md`): scripts, sources, AI-added context
+  and quick checks as Markdown.
+- Progress bar burned into every short; `backend/.env` is loaded automatically.
+
 ## MVP success criteria (spec §28)
 
 Upload · S3 · Bedrock analysis · topic map · learning order · add/remove topics ·

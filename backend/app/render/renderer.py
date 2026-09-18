@@ -72,10 +72,21 @@ class SceneTiming:
     elements: list[Timed] = field(default_factory=list)
 
 
+@dataclass
+class Caption:
+    start: float
+    end: float
+    words: list[tuple[float, str]]     # absolute (time, word)
+
+
 class Renderer:
     def __init__(self, width: int, height: int, fps: int,
-                 page_image: Optional[Callable[[int], Optional[Image.Image]]] = None, footer: str = ""):
+                 page_image: Optional[Callable[[int], Optional[Image.Image]]] = None, footer: str = "",
+                 captions: bool = True, progress_bar: bool = True):
         self.W, self.H, self.fps = width, height, fps
+        self.captions_on = captions
+        self.progress_bar = progress_bar
+        self.captions: list[Caption] = []
         self.base = min(width, height)             # short side: 720 for both 720x1280 and 1280x720
         self.s = self.base / 720.0                 # scale factor for strokes, offsets, fonts
         self.page_image = page_image
@@ -148,7 +159,8 @@ class Renderer:
             return ((bbox[2] - bbox[0]) / self.W * 100, (bbox[3] - bbox[1]) / self.H * 100 + 2)
         return (el.w or 20, el.h or 10)
 
-    def build(self, part: PlanPart, scene_durations: list[float]) -> None:
+    def build(self, part: PlanPart, scene_durations: list[float],
+              scene_words: Optional[list[list[tuple[float, str]]]] = None) -> None:
         t0 = 0.0
         cursor_y = 22.0
         order = 0
@@ -191,6 +203,7 @@ class Renderer:
             self.scenes.append(st)
             t0 += dur
         self.total = t0
+        self.captions = self._build_captions(scene_words or []) if self.captions_on else []
         # measure final bboxes (needed for arrows/highlights referencing ids)
         for st in self.scenes:
             for tm in st.elements:
@@ -631,6 +644,77 @@ class Renderer:
         if page:
             self._label_bg(draw, f"p. {page}", (b[2] - 20 * self.s, b[3] + 12 * self.s), "small", _color("grey"))
 
+    # ------------------------------------------------------------------ captions
+    def _build_captions(self, scene_words: list[list[tuple[float, str]]]) -> list[Caption]:
+        """Group each scene's (time, word) marks into short caption chunks."""
+        caps: list[Caption] = []
+        for st, words in zip(self.scenes, scene_words):
+            chunk: list[tuple[float, str]] = []
+            chunks: list[list[tuple[float, str]]] = []
+            for t, w in words:
+                chunk.append((st.start + t, w))
+                ends_sentence = w[-1:] in ".!?"
+                soft_break = w[-1:] in ",;:" and len(chunk) >= 4
+                if len(chunk) >= 7 or ends_sentence or soft_break:
+                    chunks.append(chunk)
+                    chunk = []
+            if chunk:
+                chunks.append(chunk)
+            for i, c in enumerate(chunks):
+                end = chunks[i + 1][0][0] if i + 1 < len(chunks) else st.end - 0.15
+                caps.append(Caption(start=c[0][0], end=max(c[0][0] + 0.4, end), words=c))
+        return caps
+
+    def _draw_caption(self, img: Image.Image, t: float) -> None:
+        cap = next((c for c in self.captions if c.start - 0.12 <= t < c.end), None)
+        if not cap:
+            return
+        draw = ImageDraw.Draw(img)
+        font = get_font(self.font_px("normal"))
+        space = font.getlength(" ")
+        max_w = self.W * 0.86
+        lines: list[list[tuple[float, str]]] = [[]]
+        width = 0.0
+        for tw in cap.words:
+            wl = font.getlength(tw[1])
+            if lines[-1] and width + space + wl > max_w:
+                lines.append([tw])
+                width = wl
+            else:
+                lines[-1].append(tw)
+                width += (space if len(lines[-1]) > 1 else 0) + wl
+        lh = font.size * 1.3
+        pad_x, pad_y = 18 * self.s, 10 * self.s
+        box_w = max(sum(font.getlength(w) for _, w in ln) + space * (len(ln) - 1) for ln in lines) + 2 * pad_x
+        box_h = lh * len(lines) + 2 * pad_y
+        cx, cy = self.W / 2, self.H - 96 * self.s
+        draw.rounded_rectangle([cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2],
+                               radius=12 * self.s, fill=(31, 41, 51))
+        y = cy - box_h / 2 + pad_y + lh / 2
+        spoken = [tw for tw in cap.words if tw[0] <= t]
+        current = spoken[-1] if spoken else None
+        for ln in lines:
+            lw = sum(font.getlength(w) for _, w in ln) + space * (len(ln) - 1)
+            x = cx - lw / 2
+            for tw in ln:
+                if tw is current:
+                    color = HIGHLIGHT_RGB
+                elif tw[0] <= t:
+                    color = (255, 255, 255)
+                else:
+                    color = (156, 163, 175)
+                draw.text((x, y), tw[1], font=font, fill=color, anchor="lm")
+                x += font.getlength(tw[1]) + space
+            y += lh
+
+    def _draw_progress(self, img: Image.Image, t: float) -> None:
+        if self.total <= 0:
+            return
+        draw = ImageDraw.Draw(img)
+        h = max(3, int(4 * self.s))
+        draw.rectangle([0, self.H - h, self.W, self.H], fill=(229, 231, 235))
+        draw.rectangle([0, self.H - h, self.W * _clamp(t / self.total), self.H], fill=(31, 41, 51))
+
     # ------------------------------------------------------------------ frames
     def _blank(self) -> Image.Image:
         img = Image.new("RGB", (self.W, self.H), BG)
@@ -703,6 +787,10 @@ class Renderer:
         for tm in active:
             p, alpha = self._state(tm, t)
             self._draw_element(img, tm, p, alpha, t)
+        if self.captions:
+            self._draw_caption(img, t)
+        if self.progress_bar:
+            self._draw_progress(img, t)
         return img
 
     def frames(self) -> Iterator[bytes]:

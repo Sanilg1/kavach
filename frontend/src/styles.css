@@ -1970,3 +1970,60 @@ details summary {
     transition: none;
   }
 }
+
+
+/* ---------- lesson tools (full lesson + notes) ---------- */
+.lesson-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lesson-tools .tool {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lesson-tools .tool:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.lesson-tools.bar {
+  margin-left: auto;
+}
+
+.lesson-tools.bar .tool {
+  border: 0;
+  background: rgba(14, 17, 22, 0.62);
+  color: #fff;
+  backdrop-filter: blur(6px);
+}
+
+.lesson-tools.rail {
+  flex-direction: column;
+  margin-top: 14px;
+}
+
+.lesson-tools.rail .tool {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.lesson-tools.rail .tool:hover {
+  border-color: var(--ink);
+}
+
+.lesson-tools .tool-error {
+  font-size: 11px;
+  color: var(--red);
+  max-width: 160px;
+}

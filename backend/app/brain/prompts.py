@@ -86,7 +86,8 @@ unit of y is 1.8x taller than one unit of x, and the board is narrow. Design for
 board: stack ideas vertically, use FLOW with direction "vertical", put client/server
 diagrams top-to-bottom or as two columns with messages zig-zagging down, keep TABLEs to
 2-3 columns, keep TEXT lines short (<= 5 words per line). Keep the title around y=6 and
-content between y=14 and y=94. Leave margins (x 6-94). Do not overlap elements.
+content between y=13 and y=84 - the band below y=86 is reserved for synced captions.
+Leave margins (x 6-94). Do not overlap elements.
 
 PRIMITIVES (field "type") and their fields:
 - TEXT: text, size (title|large|normal|small), color. A title uses size "title".
@@ -202,9 +203,14 @@ OUTPUT JSON SCHEMA:
 }"""
 
 
-def topic_map_user(doc_text: str, title_hint: str, page_count: int) -> str:
+def topic_map_user(doc_text: str, title_hint: str, page_count: int, pdf_attached: bool = False) -> str:
+    note = (
+        "The original PDF is attached as well: use it to understand diagrams, tables, equations and "
+        "layout that the extracted text below may have lost, and to judge page quality. Page numbers "
+        "in the attachment correspond to the [Page N] markers.\n\n" if pdf_attached else ""
+    )
     return (
-        f"Document title hint: {title_hint or 'unknown'}\nPage count: {page_count}\n\n"
+        f"Document title hint: {title_hint or 'unknown'}\nPage count: {page_count}\n\n{note}"
         f"=== DOCUMENT TEXT ===\n{doc_text}\n=== END DOCUMENT ===\n\n"
         "Produce the topic map JSON now."
     )
@@ -217,6 +223,7 @@ def plan_user(
     ai_enhanced: bool,
     feedback: str | None = None,
     previous_plan: dict | None = None,
+    image_pages: list[int] | None = None,
 ) -> str:
     siblings = [
         f"{t.get('learning_order', 0)}. {t['name']} (id={t['topic_id']})"
@@ -233,6 +240,11 @@ def plan_user(
         f"Source pages: {topic.get('source_pages', [])}",
         f"Mode: {'AI-ENHANCED (you may add general knowledge, list it in ai_added_context)' if ai_enhanced else 'DEFAULT (PDF only; ai_added_context must be empty)'}",
     ]
+    if image_pages:
+        parts += ["", f"Images of PDF pages {image_pages} are attached in that order. Use them to read any "
+                      "diagrams, tables or equations the text lost; re-draw important figures with the "
+                      "renderer's primitives (FLOW, DIAGRAM, TABLE, EQUATION) rather than describing them, "
+                      "and use IMAGE with that page number only when the original figure itself matters."]
     if feedback:
         parts += ["", "REGENERATION REQUEST: " + FEEDBACK_ADJUSTMENTS.get(feedback, feedback)]
         if previous_plan:

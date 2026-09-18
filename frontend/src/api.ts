@@ -34,6 +34,10 @@ export interface Doc {
   error?: string;
   reels_completed?: number;
   reels_failed?: number;
+  combined_status?: "BUILDING" | "COMPLETED" | "FAILED";
+  combined_url?: string | null;
+  combined_duration?: number;
+  combined_error?: string;
 }
 
 export interface Topic {
@@ -144,6 +148,8 @@ export const api = {
   ask: (id: string, question: string, ai_enhanced: boolean) => req<Answer>(`/reels/${id}/ask`, json({ question, ai_enhanced })),
   regenerate: (id: string, feedback: string, ai_enhanced: boolean) => req<{ status: string }>(`/reels/${id}/regenerate`, json({ feedback, ai_enhanced })),
   feedback: (id: string, feedback: string) => req<{ ok: boolean }>(`/reels/${id}/feedback`, json({ feedback })),
+  combine: (id: string) => req<{ combined_status: string }>(`/documents/${id}/combine`, { method: "POST" }),
+  notesUrl: (id: string) => `${API_URL}/documents/${id}/notes.md`,
 };
 
 export function fmtDuration(sec: number): string {

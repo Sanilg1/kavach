@@ -2,14 +2,42 @@
 Validates / normalises model output into the typed contract in app/models.py."""
 from __future__ import annotations
 
+import logging
 import re
+from pathlib import Path
 from typing import Optional
 
 from ..config import settings
 from ..models import Element, PlanPart, QuickCheck, Scene, TeachingPlan, Topic, TopicMap, Uncertainty
+from ..pdf import extract as pdfx
 from ..pdf.extract import ExtractedDoc, clean_title
 from . import prompts
-from .client import complete_json_with_retry
+from .client import Attachment, complete_json_with_retry
+
+log = logging.getLogger("kavach.planner")
+
+
+def _pdf_attachment(pdf_path: Optional[Path]) -> list[Attachment]:
+    if not (settings.BRAIN_VISION and pdf_path and pdf_path.exists()):
+        return []
+    size = pdf_path.stat().st_size
+    if size > settings.BRAIN_MAX_PDF_MB * 1024 * 1024:
+        log.info("PDF is %.1f MB; sending text only to the brain", size / 1e6)
+        return []
+    return [{"kind": "pdf", "bytes": pdf_path.read_bytes(), "name": "study-material"}]
+
+
+def _page_attachments(pdf_path: Optional[Path], pages: list[int], page_count: int) -> list[Attachment]:
+    if not (settings.BRAIN_VISION and pdf_path and pdf_path.exists()):
+        return []
+    out: list[Attachment] = []
+    for p in sorted(set(pages))[: settings.BRAIN_MAX_ATTACH_PAGES]:
+        if 1 <= p <= page_count:
+            try:
+                out.append({"kind": "image", "bytes": pdfx.render_page_jpeg(pdf_path, p), "format": "jpeg", "page": p})
+            except Exception as ex:  # noqa: BLE001
+                log.warning("could not render page %s for the brain: %s", p, ex)
+    return out
 
 
 def _slug(s: str) -> str:
@@ -29,10 +57,13 @@ def _pages(v, page_count: int) -> list[int]:
 
 
 # ------------------------------------------------------------------ topic map
-def build_topic_map(ex: ExtractedDoc) -> TopicMap:
+def build_topic_map(ex: ExtractedDoc, pdf_path: Optional[Path] = None) -> TopicMap:
+    attachments = _pdf_attachment(pdf_path)
     raw = complete_json_with_retry(
         prompts.TOPIC_MAP_SYSTEM,
-        prompts.topic_map_user(ex.full_text(settings.MAX_DOC_CHARS), ex.title_guess, ex.page_count),
+        prompts.topic_map_user(ex.full_text(settings.MAX_DOC_CHARS), ex.title_guess, ex.page_count,
+                               pdf_attached=bool(attachments)),
+        attachments=attachments,
     )
     topics: list[Topic] = []
     seen: set[str] = set()
@@ -202,14 +233,18 @@ def build_teaching_plan(
     ai_enhanced: bool = False,
     feedback: Optional[str] = None,
     previous_plan: Optional[dict] = None,
+    pdf_path: Optional[Path] = None,
 ) -> TeachingPlan:
     pages = topic.get("source_pages") or [1]
     context = ex.text_for_pages(pages, pad=1, max_chars=60000)
     if len(context) < 400:  # tiny excerpt: give the brain more of the document
         context = ex.full_text(40000)
+    attachments = _page_attachments(pdf_path, pages, ex.page_count)
     raw = complete_json_with_retry(
         prompts.PLAN_SYSTEM,
-        prompts.plan_user(topic, topic_map, context, ai_enhanced, feedback, previous_plan),
+        prompts.plan_user(topic, topic_map, context, ai_enhanced, feedback, previous_plan,
+                          image_pages=[a["page"] for a in attachments]),
+        attachments=attachments,
     )
     return normalise_plan(raw, topic, ex.page_count)
 

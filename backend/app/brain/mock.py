@@ -56,7 +56,7 @@ def _keywords(text: str, n: int = 4, exclude: set[str] | None = None) -> list[st
 
 
 class MockBrain:
-    def complete_json(self, system: str, user: str, max_tokens: int | None = None) -> dict:
+    def complete_json(self, system: str, user: str, max_tokens: int | None = None, attachments=None) -> dict:
         if "TASK: Build the topic map" in system:
             return self._topic_map(user)
         if "TASK: Write the teaching plan" in system:
@@ -168,7 +168,7 @@ class MockBrain:
                     "clear": False,
                     "elements": [
                         {"id": "d", "type": "DIAGRAM", "animation": "DRAW", "color": "ink",
-                         "nodes": [{"id": "n1", "label": kws[0], "x": 28, "y": 62}, {"id": "n2", "label": kws[1 % len(kws)], "x": 72, "y": 72}, {"id": "n3", "label": kws[2 % len(kws)], "x": 40, "y": 84}],
+                         "nodes": [{"id": "n1", "label": kws[0], "x": 28, "y": 62}, {"id": "n2", "label": kws[1 % len(kws)], "x": 72, "y": 72}, {"id": "n3", "label": kws[2 % len(kws)], "x": 40, "y": 80}],
                          "edges": [{"from": "n1", "to": "n2", "label": "leads to"}, {"from": "n2", "to": "n3", "label": "enables"}]},
                         {"id": "hl", "type": "HIGHLIGHT", "target": "flow", "animation": "HIGHLIGHT"},
                     ],
@@ -249,7 +249,7 @@ def _tcp_demo_plan(name: str, tid: str, src: list[int], feedback: bool) -> dict:
                      "elements": [
                          {"id": "cs", "type": "TEXT", "text": "seq #, buffers, window", "size": "small", "color": "blue", "x": 50, "y": 31, "animation": "WRITE"},
                          {"id": "ss", "type": "TEXT", "text": "seq #, buffers, window", "size": "small", "color": "green", "x": 50, "y": 65, "animation": "WRITE"},
-                         {"id": "q", "type": "TEXT", "text": "How do both sides agree?", "size": "large", "color": "red", "x": 50, "y": 80, "animation": "FADE_IN"},
+                         {"id": "q", "type": "TEXT", "text": "How do both sides agree?", "size": "large", "color": "red", "x": 50, "y": 78, "animation": "FADE_IN"},
                      ]},
                     {"narration": "A single request is not enough, because the client would never know whether the server actually received it. So TCP uses an exchange of three messages: the three-way handshake.", "clear": False,
                      "elements": [

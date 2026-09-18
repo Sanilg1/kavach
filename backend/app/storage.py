@@ -153,3 +153,7 @@ def k_video(doc_id: str, reel_id: str) -> str:
 
 def k_thumb(doc_id: str, reel_id: str) -> str:
     return f"videos/{doc_id}/{reel_id}.jpg"
+
+
+def k_combined(doc_id: str) -> str:
+    return f"videos/{doc_id}/combined.mp4"

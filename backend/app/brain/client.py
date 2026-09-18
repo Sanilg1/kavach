@@ -22,6 +22,15 @@ class BrainError(RuntimeError):
     pass
 
 
+# attachments: [{"kind": "pdf", "bytes": b, "name": "study-material"} | {"kind": "image", "bytes": b, "format": "jpeg"}]
+Attachment = dict[str, Any]
+
+
+def _attachment_error(msg: str) -> bool:
+    msg = msg.lower()
+    return any(k in msg for k in ("document", "image", "media", "content block", "too large", "input is too long"))
+
+
 def _extract_json(text: str) -> Any:
     """Parse a JSON object from model output, tolerating fences and stray prose."""
     t = text.strip()
@@ -51,14 +60,31 @@ class BedrockMantleBrain:
         self.model = settings.BEDROCK_MODEL
         self._effort_supported = True
 
-    def complete_json(self, system: str, user: str, max_tokens: int | None = None) -> dict:
+    @staticmethod
+    def _content(user: str, attachments: list[Attachment] | None) -> list[dict] | str:
+        if not attachments:
+            return user
+        import base64
+
+        blocks: list[dict] = []
+        for a in attachments:
+            data = base64.b64encode(a["bytes"]).decode("ascii")
+            if a["kind"] == "pdf":
+                blocks.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data}})
+            else:
+                blocks.append({"type": "image", "source": {"type": "base64", "media_type": f"image/{a.get('format', 'jpeg')}", "data": data}})
+        blocks.append({"type": "text", "text": user})
+        return blocks
+
+    def complete_json(self, system: str, user: str, max_tokens: int | None = None,
+                      attachments: list[Attachment] | None = None) -> dict:
         from anthropic import APIStatusError
 
         kwargs: dict[str, Any] = dict(
             model=self.model,
             max_tokens=max_tokens or settings.BRAIN_MAX_TOKENS,
             system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[{"role": "user", "content": self._content(user, attachments)}],
             thinking={"type": "adaptive"},
         )
         if self._effort_supported and settings.BRAIN_EFFORT:
@@ -67,7 +93,11 @@ class BedrockMantleBrain:
             text = self._stream(kwargs)
         except APIStatusError as e:
             msg = str(e).lower()
-            if "output_config" in msg or "effort" in msg or "thinking" in msg:
+            if attachments and _attachment_error(msg):
+                log.warning("Bedrock rejected attachments, retrying text-only: %s", e)
+                kwargs["messages"] = [{"role": "user", "content": user}]
+                text = self._stream(kwargs)
+            elif "output_config" in msg or "effort" in msg or "thinking" in msg:
                 # older Bedrock deployments reject these fields; retry without them
                 log.warning("Bedrock rejected effort/thinking config, retrying without: %s", e)
                 self._effort_supported = False
@@ -104,13 +134,25 @@ class BedrockConverseBrain:
         self.model = settings.BEDROCK_MODEL
         self._thinking_supported = True
 
-    def complete_json(self, system: str, user: str, max_tokens: int | None = None) -> dict:
+    @staticmethod
+    def _content(user: str, attachments: list[Attachment] | None) -> list[dict]:
+        blocks: list[dict] = []
+        for a in attachments or []:
+            if a["kind"] == "pdf":
+                blocks.append({"document": {"format": "pdf", "name": a.get("name", "study-material"), "source": {"bytes": a["bytes"]}}})
+            else:
+                blocks.append({"image": {"format": a.get("format", "jpeg"), "source": {"bytes": a["bytes"]}}})
+        blocks.append({"text": user})
+        return blocks
+
+    def complete_json(self, system: str, user: str, max_tokens: int | None = None,
+                      attachments: list[Attachment] | None = None) -> dict:
         from botocore.exceptions import ClientError
 
         kwargs: dict[str, Any] = dict(
             modelId=self.model,
             system=[{"text": system}],
-            messages=[{"role": "user", "content": [{"text": user}]}],
+            messages=[{"role": "user", "content": self._content(user, attachments)}],
             inferenceConfig={"maxTokens": min(max_tokens or settings.BRAIN_MAX_TOKENS, 64000)},
         )
         if self._thinking_supported:
@@ -121,7 +163,11 @@ class BedrockConverseBrain:
             text, stop = self._stream(kwargs)
         except ClientError as e:
             msg = str(e).lower()
-            if self._thinking_supported and ("thinking" in msg or "additionalmodelrequestfields" in msg or "validationexception" in msg):
+            if attachments and _attachment_error(msg):
+                log.warning("Bedrock rejected attachments, retrying text-only: %s", e)
+                kwargs["messages"] = [{"role": "user", "content": [{"text": user}]}]
+                text, stop = self._stream(kwargs)
+            elif self._thinking_supported and ("thinking" in msg or "additionalmodelrequestfields" in msg or "validationexception" in msg):
                 log.warning("Bedrock rejected adaptive thinking for %s, retrying without: %s", self.model, e)
                 self._thinking_supported = False
                 kwargs.pop("additionalModelRequestFields", None)
@@ -164,11 +210,12 @@ def _build():
 brain = _build()
 
 
-def complete_json_with_retry(system: str, user: str, max_tokens: int | None = None, attempts: int = 2) -> dict:
+def complete_json_with_retry(system: str, user: str, max_tokens: int | None = None, attempts: int = 2,
+                             attachments: list[Attachment] | None = None) -> dict:
     last: Exception | None = None
     for i in range(attempts):
         try:
-            return brain.complete_json(system, user, max_tokens)
+            return brain.complete_json(system, user, max_tokens, attachments=attachments)
         except (json.JSONDecodeError, BrainError) as e:  # retry malformed JSON once
             last = e
             log.warning("brain attempt %d failed: %s", i + 1, e)

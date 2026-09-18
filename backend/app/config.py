@@ -8,6 +8,23 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
+def _load_dotenv(path: Path) -> None:
+    """Load KEY=VALUE lines from backend/.env without overriding real env vars."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.split(" #")[0].strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(Path(os.environ.get("KAVACH_ENV_FILE", BACKEND_DIR / ".env")))
+
+
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
@@ -36,6 +53,12 @@ class Settings:
     BEDROCK_MODEL = _env("KAVACH_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
     BRAIN_EFFORT = _env("KAVACH_BRAIN_EFFORT", "high")
     BRAIN_MAX_TOKENS = int(_env("KAVACH_BRAIN_MAX_TOKENS", "32000"))
+    # send the PDF / page images to the brain so it can see diagrams, tables, equations
+    BRAIN_VISION = _env("KAVACH_BRAIN_VISION", "1") not in ("0", "false", "no")
+    BRAIN_MAX_ATTACH_PAGES = int(_env("KAVACH_BRAIN_MAX_ATTACH_PAGES", "4"))
+    BRAIN_MAX_PDF_MB = float(_env("KAVACH_BRAIN_MAX_PDF_MB", "4.4"))
+    # how many topics are planned concurrently while earlier ones render
+    PLAN_CONCURRENCY = int(_env("KAVACH_PLAN_CONCURRENCY", "2"))
 
     POLLY_VOICE = _env("KAVACH_POLLY_VOICE", "Matthew")
     POLLY_ENGINE = _env("KAVACH_POLLY_ENGINE", "neural")
@@ -47,6 +70,7 @@ class Settings:
     VIDEO_HEIGHT = int(_env("KAVACH_VIDEO_HEIGHT", "1280"))
     VIDEO_FPS = int(_env("KAVACH_VIDEO_FPS", "24"))
     FONT_PATH = _env("KAVACH_FONT", "")
+    CAPTIONS = _env("KAVACH_CAPTIONS", "1") not in ("0", "false", "no")
 
     MAX_PAGES = int(_env("KAVACH_MAX_PAGES", "60"))
     MAX_UPLOAD_MB = int(_env("KAVACH_MAX_UPLOAD_MB", "40"))

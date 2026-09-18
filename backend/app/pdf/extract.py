@@ -162,6 +162,18 @@ def render_page_png(pdf_path: Path, page_no: int, scale: float = 1.5) -> bytes:
     return buf.getvalue()
 
 
+def render_page_jpeg(pdf_path: Path, page_no: int, scale: float = 1.0, quality: int = 80) -> bytes:
+    """Compact page image for the brain (~60-120 KB at scale 1.0)."""
+    doc = pdfium.PdfDocument(str(pdf_path))
+    page = doc[page_no - 1]
+    img = page.render(scale=scale).to_pil().convert("RGB")
+    page.close()
+    doc.close()
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue()
+
+
 def suitability(ex: ExtractedDoc) -> Suitability:
     warnings: list[str] = []
     recs: list[str] = []

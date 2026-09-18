@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Doc, ReelsResponse } from "../api";
+import LessonTools from "./LessonTools";
 import ReelCard from "./ReelCard";
 
 function storageKey(docId: string) {
@@ -167,6 +168,7 @@ export default function ReelFeed({ doc, onBack }: { doc: Doc; onBack: () => void
               {index + 1}/{total}
             </span>
           )}
+          {done > 0 && <LessonTools doc={doc} ready={!generating && done === total} variant="bar" />}
         </header>
 
         {data?.status === "FAILED" && (
@@ -198,6 +200,7 @@ export default function ReelFeed({ doc, onBack }: { doc: Doc; onBack: () => void
             <small>/{total}</small>
           </span>
           <span className="hint">↑ ↓ keys</span>
+          {done > 0 && <LessonTools doc={doc} ready={!generating && done === total} variant="rail" />}
         </nav>
       )}
     </div>

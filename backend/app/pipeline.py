@@ -7,6 +7,7 @@ import logging
 import shutil
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -62,7 +63,7 @@ def analyze_document(doc_id: str) -> None:
         db.update_document(doc_id, status="ANALYZING", progress="Identifying concepts", page_count=ex.page_count,
                            quality=suit.quality, suitability=suit.model_dump(), title=ex.title_guess)
 
-        tmap: TopicMap = planner.build_topic_map(ex)
+        tmap: TopicMap = planner.build_topic_map(ex, pdf_path=pdf_path)
         st.put_json(st.k_topic_map(doc_id), tmap.model_dump())
         db.put_topics(doc_id, [t.model_dump() for t in tmap.topics])
         est_shorts = sum(t.estimated_shorts for t in tmap.topics if t.selected)
@@ -145,38 +146,48 @@ def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[s
                 })
 
         failures = 0
-        for t in topics:
-            db.update_document(doc_id, progress=f"Planning: {t['name']}")
+        pdf_path = st.storage.local_path(st.k_upload(doc_id))
+
+        def plan_topic(t: dict):
             for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
                 db.update_reel(reel_ids[(t["topic_id"], part)], status="PLANNING")
-            try:
-                plan = planner.build_teaching_plan(t, tmap, ex, ai_enhanced=ai_enhanced)
-            except Exception as e:  # noqa: BLE001
-                log.exception("plan failed for topic %s", t["topic_id"])
-                failures += 1
-                for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
-                    db.update_reel(reel_ids[(t["topic_id"], part)], status="FAILED", error=str(e)[:500])
-                continue
-            st.put_json(st.k_plan(doc_id, t["topic_id"]), plan.model_dump())
-            # reconcile reel rows with the number of parts the brain actually chose
-            planned = {p.part for p in plan.parts}
-            for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
-                if part not in planned:
-                    db.update_reel(reel_ids[(t["topic_id"], part)], status="FAILED", error="Brain merged this part into another short", hidden=True)
-            for p in plan.parts:
-                key = (t["topic_id"], p.part)
-                rid = reel_ids.get(key) or uuid.uuid4().hex[:12]
-                if key not in reel_ids:
-                    db.put_reel({"reel_id": rid, "document_id": doc_id, "topic_id": t["topic_id"], "topic_name": t["name"],
-                                 "learning_order": t.get("learning_order", 0), "part": p.part, "status": "PENDING",
-                                 "created_at": now_iso(), "ai_enhanced": ai_enhanced})
-                    reel_ids[key] = rid
+            return planner.build_teaching_plan(t, tmap, ex, ai_enhanced=ai_enhanced, pdf_path=pdf_path)
+
+        # Plan several topics concurrently (Bedrock latency dominates) while earlier
+        # topics render in learning order on this thread.
+        with ThreadPoolExecutor(max_workers=max(1, settings.PLAN_CONCURRENCY), thread_name_prefix="kavach-plan") as pool:
+            futures = {t["topic_id"]: pool.submit(plan_topic, t) for t in topics}
+            for t in topics:
+                db.update_document(doc_id, progress=f"Planning: {t['name']}")
                 try:
-                    render_reel(doc_id, rid, plan, p)
+                    plan = futures[t["topic_id"]].result()
                 except Exception as e:  # noqa: BLE001
-                    log.exception("render failed for reel %s", rid)
+                    log.exception("plan failed for topic %s", t["topic_id"])
                     failures += 1
-                    db.update_reel(rid, status="FAILED", error=str(e)[:500])
+                    for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
+                        db.update_reel(reel_ids[(t["topic_id"], part)], status="FAILED", error=str(e)[:500])
+                    continue
+                st.put_json(st.k_plan(doc_id, t["topic_id"]), plan.model_dump())
+                # reconcile reel rows with the number of parts the brain actually chose
+                planned = {p.part for p in plan.parts}
+                for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
+                    if part not in planned:
+                        db.update_reel(reel_ids[(t["topic_id"], part)], status="FAILED", error="Brain merged this part into another short", hidden=True)
+                for p in plan.parts:
+                    key = (t["topic_id"], p.part)
+                    rid = reel_ids.get(key) or uuid.uuid4().hex[:12]
+                    if key not in reel_ids:
+                        db.put_reel({"reel_id": rid, "document_id": doc_id, "topic_id": t["topic_id"], "topic_name": t["name"],
+                                     "learning_order": t.get("learning_order", 0), "part": p.part, "status": "PENDING",
+                                     "created_at": now_iso(), "ai_enhanced": ai_enhanced})
+                        reel_ids[key] = rid
+                    db.update_document(doc_id, progress=f"Rendering: {p.title}")
+                    try:
+                        render_reel(doc_id, rid, plan, p)
+                    except Exception as e:  # noqa: BLE001
+                        log.exception("render failed for reel %s", rid)
+                        failures += 1
+                        db.update_reel(rid, status="FAILED", error=str(e)[:500])
         done = [r for r in db.list_reels(doc_id) if r.get("status") == "COMPLETED"]
         status = "COMPLETED" if done else "FAILED"
         db.update_document(doc_id, status=status, progress="Done" if done else "Generation failed",
@@ -200,12 +211,14 @@ def render_reel(doc_id: str, reel_id: str, plan: TeachingPlan, part: PlanPart) -
     t_start = time.time()
     segments: list[tuple[Path, float]] = []
     scene_durations: list[float] = []
+    scene_words: list[list[tuple[float, str]]] = []
     for i, scene in enumerate(part.scenes):
         mp3 = work / f"scene_{i + 1}.mp3"
-        audio_len = tts.synthesize(scene.narration, mp3)
-        pad = max(0.7, 3.0 - audio_len)         # breathing room after each scene
+        narration = tts.synthesize(scene.narration, mp3)
+        pad = max(0.7, 3.0 - narration.duration)   # breathing room after each scene
         segments.append((mp3, pad))
-        scene_durations.append(audio_len + pad)
+        scene_durations.append(narration.duration + pad)
+        scene_words.append(narration.words)
     audio_path = work / "narration.m4a"
     concat_audio(segments, audio_path)
 
@@ -216,8 +229,9 @@ def render_reel(doc_id: str, reel_id: str, plan: TeachingPlan, part: PlanPart) -
         return Image.open(io.BytesIO(pdfx.render_page_png(pdf_path, page, scale=1.2)))
 
     r = Renderer(settings.VIDEO_WIDTH, settings.VIDEO_HEIGHT, settings.VIDEO_FPS, page_image=page_image,
-                 footer=f"Source: PDF {_fmt_pages(part.sources)}" if part.sources else "")
-    r.build(part, scene_durations)
+                 footer=f"Source: PDF {_fmt_pages(part.sources)}" if part.sources else "",
+                 captions=settings.CAPTIONS)
+    r.build(part, scene_durations, scene_words)
     mp4 = work / "short.mp4"
     encode_video(r.frames(), settings.VIDEO_WIDTH, settings.VIDEO_HEIGHT, settings.VIDEO_FPS, audio_path, mp4)
     poster = work / "poster.jpg"
@@ -255,7 +269,8 @@ def regenerate_reel(reel_id: str, feedback: str, ai_enhanced: bool) -> None:
             prev_part = next((p for p in previous.get("parts", []) if p.get("part") == reel.get("part")), None)
             previous = {"parts": [prev_part]} if prev_part else previous
         topic["description"] = f"{topic.get('description', '')} Focus only on: {reel.get('title', '')}".strip()
-        plan = planner.build_teaching_plan(topic, tmap, ex, ai_enhanced=ai_enhanced, feedback=feedback, previous_plan=previous)
+        plan = planner.build_teaching_plan(topic, tmap, ex, ai_enhanced=ai_enhanced, feedback=feedback, previous_plan=previous,
+                                           pdf_path=st.storage.local_path(st.k_upload(doc_id)))
         want = int(reel.get("part", 1))
         part = next((p for p in plan.parts if p.part == want), plan.parts[0])
         part.part = want
@@ -277,3 +292,68 @@ def ask(reel_id: str, question: str, ai_enhanced: bool) -> dict:
         raise ValueError("Reel not found")
     ex = _load_doc(reel["document_id"])
     return planner.answer_question(question, reel, ex, ai_enhanced)
+
+
+# ---------------------------------------------------------------- 7. combined lesson (spec §21)
+def combine_document(doc_id: str) -> None:
+    """Concatenate every completed short (in learning order) into one lesson MP4."""
+    import subprocess
+
+    from .video.ffmpeg import ffmpeg_exe
+
+    try:
+        reels = [r for r in db.list_reels(doc_id)
+                 if r.get("status") == "COMPLETED" and r.get("video_s3_key") and not r.get("hidden")]
+        if not reels:
+            raise ValueError("No completed shorts to combine")
+        db.update_document(doc_id, combined_status="BUILDING")
+        work = settings.WORK_DIR / doc_id / "combined"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True, exist_ok=True)
+        files = []
+        for i, r in enumerate(reels):
+            p = work / f"{i:02d}.mp4"
+            st.storage.get_to_file(r["video_s3_key"], p)
+            files.append(p)
+        listing = work / "list.txt"
+        listing.write_text("".join(f"file '{p.as_posix()}'\n" for p in files), encoding="utf-8")
+        out = work / "combined.mp4"
+        # all shorts share the encoder settings, so a stream copy is enough
+        subprocess.run([ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
+                        "-c", "copy", "-movflags", "+faststart", str(out)], check=True, capture_output=True)
+        key = st.k_combined(doc_id)
+        st.storage.put_file(key, out, "video/mp4")
+        db.update_document(doc_id, combined_status="COMPLETED", combined_video_key=key,
+                           combined_duration=round(sum(float(r.get("duration") or 0) for r in reels), 1),
+                           combined_reels=len(reels), combined_error=None)
+        shutil.rmtree(work, ignore_errors=True)
+    except Exception as e:  # noqa: BLE001
+        log.exception("combine failed for %s", doc_id)
+        db.update_document(doc_id, combined_status="FAILED", combined_error=str(e)[:500])
+
+
+# ---------------------------------------------------------------- 8. revision notes export
+def notes_markdown(doc_id: str) -> str:
+    doc = db.get_document(doc_id) or {}
+    reels = [r for r in db.list_reels(doc_id) if r.get("status") == "COMPLETED" and not r.get("hidden")]
+    lines = [f"# {doc.get('title') or 'Revision notes'}", "", f"_Generated by Kavach from {doc.get('filename', 'your PDF')}._", ""]
+    if doc.get("summary"):
+        lines += [doc["summary"], ""]
+    for i, r in enumerate(reels, 1):
+        lines += [f"## {i}. {r.get('title')}", ""]
+        if r.get("sources"):
+            lines += [f"**Source:** PDF {_fmt_pages(r['sources'])}", ""]
+        if r.get("script"):
+            lines += [r["script"], ""]
+        if r.get("ai_added_context"):
+            lines += ["**AI-added context (not in your PDF):**"] + [f"- {c}" for c in r["ai_added_context"]] + [""]
+        if r.get("uncertainty") and r["uncertainty"].get("reason"):
+            lines += [f"> Source uncertainty: {r['uncertainty']['reason']}", ""]
+        qc = r.get("quick_check")
+        if qc:
+            letters = "ABCD"
+            lines += [f"**Quick check:** {qc['question']}", ""]
+            lines += [f"- {letters[j]}. {o}" for j, o in enumerate(qc["options"])]
+            lines += ["", f"<details><summary>Answer</summary>{letters[qc['answer']]}. {qc['options'][qc['answer']]}"
+                      + (f" — {qc['explanation']}" if qc.get("explanation") else "") + "</details>", ""]
+    return "\n".join(lines)
