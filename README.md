@@ -106,10 +106,18 @@ and start the backend as above. Credentials come from the usual AWS chain
 `python scripts/smoke_test.py` (prints presigned S3 URLs for the MP4s).
 
 Notes
-- **Model access**: in the Bedrock console open *Model access*, submit the one-time
-  Anthropic use-case form and enable the Claude models. Until then Bedrock returns
-  "Model use case details have not been submitted". Newer tiers (Opus 4.7+, Sonnet 5,
-  Fable) may show "not available for this account" — that needs an AWS request.
+- **Model access**: Anthropic models need a one-time use-case form. The console page was
+  retired; submit it through the API (`bedrock:PutUseCaseForModelAccess`, JSON with
+  `companyName, companyWebsite, industryOption, otherIndustryOption, intendedUsers ("0"/"1"),
+  useCases`) or from the Model catalog playground. Until then Bedrock returns "Model use
+  case details have not been submitted". Newer tiers (Opus 4.7+, Sonnet 5, Fable) may show
+  "not available for this account" — that needs an AWS request.
+- **New-account quotas**: fresh AWS accounts get near-zero Bedrock quotas ("Too many tokens
+  per day") even though defaults are millions. Request increases for the per-minute quotas in
+  Service Quotas and open a *Service limit increase* support case for the per-day token quota.
+  Quotas also differ per region (`KAVACH_BEDROCK_REGION`); `us-west-2` had the best defaults.
+- Stopgap while quotas are pending: `KAVACH_BRAIN=anthropic` + `ANTHROPIC_API_KEY` runs the
+  same prompts on the first-party Claude API (`claude-opus-5`).
 - The Brain talks to Bedrock through the **Converse API** (boto3, streaming, adaptive
   thinking) using inference-profile ids like `global.anthropic.claude-opus-4-6-v1`
   (best quality) or `global.anthropic.claude-sonnet-4-6` (faster). Accounts with Claude

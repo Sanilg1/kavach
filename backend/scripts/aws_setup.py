@@ -17,7 +17,8 @@ from botocore.exceptions import ClientError
 REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 BUCKET = os.environ.get("KAVACH_S3_BUCKET", "")
 PREFIX = os.environ.get("KAVACH_DDB_PREFIX", "kavach")
-MODEL = os.environ.get("KAVACH_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
+MODEL = os.environ.get("KAVACH_BEDROCK_MODEL", "us.anthropic.claude-opus-4-6-v1")
+BEDROCK_REGION = os.environ.get("KAVACH_BEDROCK_REGION", REGION)
 
 
 def ensure_bucket(s3):
@@ -80,11 +81,11 @@ def main():
         if os.environ.get("KAVACH_BRAIN", "converse") == "bedrock":
             from anthropic import AnthropicBedrockMantle
 
-            m = AnthropicBedrockMantle(aws_region=REGION).messages.create(
+            m = AnthropicBedrockMantle(aws_region=BEDROCK_REGION).messages.create(
                 model=MODEL, max_tokens=20, messages=[{"role": "user", "content": "Say ok"}])
             print(f"bedrock mantle ({MODEL}): ok -> {m.content[0].text!r}")
         else:
-            r = boto3.client("bedrock-runtime", region_name=REGION).converse(
+            r = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION).converse(
                 modelId=MODEL, messages=[{"role": "user", "content": [{"text": "Say ok"}]}], inferenceConfig={"maxTokens": 20})
             print(f"bedrock converse ({MODEL}): ok -> {r['output']['message']['content'][0]['text']!r}")
     except Exception as e:  # noqa: BLE001

@@ -35,6 +35,8 @@ class Settings:
     MODE = _env("KAVACH_MODE", "local").lower()
 
     AWS_REGION = _env("AWS_REGION", _env("AWS_DEFAULT_REGION", "us-east-1"))
+    # Bedrock may live in a different region from S3/DynamoDB/Polly (model availability + quotas vary)
+    BEDROCK_REGION = _env("KAVACH_BEDROCK_REGION", "") or AWS_REGION
 
     STORAGE = _env("KAVACH_STORAGE", "s3" if MODE == "aws" else "local")   # s3 | local
     DB = _env("KAVACH_DB", "dynamodb" if MODE == "aws" else "local")       # dynamodb | local
@@ -50,8 +52,9 @@ class Settings:
 
     # Bedrock model / inference-profile id. Converse: "global.anthropic.claude-opus-4-6-v1",
     # "global.anthropic.claude-sonnet-4-6"; Mantle client: "anthropic.claude-opus-5".
-    BEDROCK_MODEL = _env("KAVACH_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
+    BEDROCK_MODEL = _env("KAVACH_BEDROCK_MODEL", "us.anthropic.claude-opus-4-6-v1")
     BRAIN_EFFORT = _env("KAVACH_BRAIN_EFFORT", "high")
+    ANTHROPIC_MODEL = _env("KAVACH_ANTHROPIC_MODEL", "claude-opus-5")   # KAVACH_BRAIN=anthropic only
     BRAIN_MAX_TOKENS = int(_env("KAVACH_BRAIN_MAX_TOKENS", "32000"))
     # send the PDF / page images to the brain so it can see diagrams, tables, equations
     BRAIN_VISION = _env("KAVACH_BRAIN_VISION", "1") not in ("0", "false", "no")

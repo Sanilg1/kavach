@@ -4,6 +4,8 @@
                like "global.anthropic.claude-opus-4-6-v1")
     bedrock  - Claude in Amazon Bedrock through the Anthropic SDK's Mantle client
                (model ids like "anthropic.claude-opus-5"; needs Mantle access on the account)
+    anthropic- first-party Claude API through the Anthropic SDK (ANTHROPIC_API_KEY);
+               stopgap when Bedrock quotas are not yet available on an account
     mock     - deterministic offline brain (see mock.py) for local development
 """
 from __future__ import annotations
@@ -53,11 +55,21 @@ def _extract_json(text: str) -> Any:
 
 
 class BedrockMantleBrain:
-    def __init__(self):
-        from anthropic import AnthropicBedrockMantle
+    """Anthropic SDK Messages API: Claude in Amazon Bedrock (Mantle) by default, or the
+    first-party Claude API when KAVACH_BRAIN=anthropic (stopgap while Bedrock quotas are
+    being raised; needs ANTHROPIC_API_KEY)."""
 
-        self.client = AnthropicBedrockMantle(aws_region=settings.AWS_REGION, timeout=600, max_retries=2)
-        self.model = settings.BEDROCK_MODEL
+    def __init__(self, first_party: bool = False):
+        if first_party:
+            from anthropic import Anthropic
+
+            self.client = Anthropic(timeout=600, max_retries=2)
+            self.model = settings.ANTHROPIC_MODEL
+        else:
+            from anthropic import AnthropicBedrockMantle
+
+            self.client = AnthropicBedrockMantle(aws_region=settings.BEDROCK_REGION, timeout=600, max_retries=2)
+            self.model = settings.BEDROCK_MODEL
         self._effort_supported = True
 
     @staticmethod
@@ -128,7 +140,7 @@ class BedrockConverseBrain:
         from botocore.config import Config
 
         self.client = boto3.client(
-            "bedrock-runtime", region_name=settings.AWS_REGION,
+            "bedrock-runtime", region_name=settings.BEDROCK_REGION,
             config=Config(read_timeout=900, connect_timeout=30, retries={"max_attempts": 3, "mode": "adaptive"}),
         )
         self.model = settings.BEDROCK_MODEL
@@ -200,6 +212,8 @@ def _build():
     kind = settings.BRAIN
     if kind == "bedrock":
         return BedrockMantleBrain()
+    if kind == "anthropic":
+        return BedrockMantleBrain(first_party=True)
     if kind == "converse":
         return BedrockConverseBrain()
     from .mock import MockBrain
