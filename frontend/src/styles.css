@@ -22,6 +22,19 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+/* hide scrollbars everywhere; content still scrolls with wheel, touch and keys */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* the shorts viewer fits the viewport, so the page itself never scrolls */
+html:has(.app-shorts),
+body:has(.app-shorts) {
+  overflow: hidden;
 }
 
 html,
@@ -85,6 +98,63 @@ button {
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--paper);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.steps .step:not(:disabled):not(.active):hover {
+  border-color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.new-project {
+  margin-left: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.new-project:hover {
+  opacity: 0.85;
+}
+
+.steps {
+  margin-left: auto;
+}
+
+.touch-only {
+  display: none;
+}
+
+@media (hover: none) {
+  .hover-only {
+    display: none;
+  }
+
+  .touch-only {
+    display: inline;
+  }
+}
+
+.steps .step:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.current-doc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
 }
 
 .steps .step.active {
@@ -429,15 +499,33 @@ h3 {
   position: sticky;
   bottom: 12px;
   margin-top: 16px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "stat go" "toggle go";
   align-items: center;
-  gap: 12px;
+  gap: 4px 16px;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 16px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.sticky-footer .bigstat {
+  grid-area: stat;
+}
+
+.sticky-footer .btn {
+  grid-area: go;
+}
+
+.sticky-footer .toggle {
+  grid-area: toggle;
+}
+
+.addrow input.pages {
+  flex: 0 1 150px;
+  min-width: 120px;
 }
 
 .toggle {
@@ -452,66 +540,6 @@ h3 {
   width: 18px;
   height: 18px;
   accent-color: var(--purple);
-}
-
-/* ---------- reel feed ---------- */
-.reel {
-  padding: 0;
-  overflow: hidden;
-}
-
-.reel .video {
-  background: #111;
-  aspect-ratio: 9 / 16;
-  position: relative;
-  width: min(100%, 420px);
-  margin: 0 auto;
-  overflow: hidden;
-}
-
-.reel video {
-  width: 100%;
-  height: 100%;
-  display: block;
-  background: #fff;
-}
-
-.reel .placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: repeating-linear-gradient(135deg, #fbfbf8, #fbfbf8 10px, #f3f4f6 10px, #f3f4f6 20px);
-  color: var(--muted);
-  gap: 8px;
-}
-
-.spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--line);
-  border-top-color: var(--ink);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.reel .body {
-  padding: 16px 20px 20px;
-}
-
-.reel .kicker {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
 }
 
 .sources {
@@ -689,15 +717,1256 @@ details summary {
     padding: 16px;
   }
 
+}
+
+/* ---------- mobile-first layout for upload / analyze / topics ---------- */
+@media (max-width: 760px) {
+  .app {
+    padding: 12px 14px 32px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px 8px;
+    padding: 2px 0 14px;
+  }
+
+  .brand {
+    flex: 1;
+    font-size: 26px;
+  }
+
+  .brand span {
+    display: none;
+  }
+
+  .new-project {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+
+  /* stage tabs become a full-width segmented control under the logo */
+  .steps {
+    order: 2;
+    width: 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 4px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .steps .step {
+    border: 0;
+    border-radius: 9px;
+    padding: 8px 0;
+    font-size: 13px;
+    text-align: center;
+    background: transparent;
+  }
+
+  .steps .step.done {
+    background: transparent;
+    color: var(--green);
+  }
+
+  .steps .step.active {
+    background: var(--ink);
+    color: #fff;
+  }
+
+  .card {
+    padding: 18px 16px;
+  }
+
+  .hero {
+    padding: 20px 2px 16px;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .dropzone {
+    padding: 32px 16px;
+  }
+
+  .dropzone .btn {
+    padding: 14px 28px;
+    font-size: 17px;
+  }
+
+  .bigstat {
+    font-size: 24px;
+  }
+
+  .actions-stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions-stack .btn {
+    justify-content: center;
+    padding: 13px 18px;
+  }
+
+  /* topic rows: checkbox | text | stacked reorder buttons */
   .topic {
-    grid-template-columns: 30px 1fr;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px 0;
   }
 
   .topic .ctrl {
-    grid-column: 2;
+    flex-direction: column;
+    gap: 6px;
   }
 
-  .steps {
+  .topic .ctrl button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .topic .name {
+    font-size: 16px;
+  }
+
+  .topic .small.muted {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .addrow input {
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 11px 12px;
+  }
+
+  .addrow input.pages {
+    flex: 1 1 0;
+  }
+
+  .addrow .btn {
+    flex: none;
+  }
+
+  /* generate bar pinned to the bottom edge, toggle on its own row */
+  .app:has(.sticky-footer) {
+    padding-bottom: 150px;
+  }
+
+  .sticky-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    margin: 0;
+    grid-template-areas: "stat go" "toggle toggle";
+    gap: 8px 12px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0;
+    border-width: 1px 0 0;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.08);
+  }
+
+  .sticky-footer .btn {
+    padding: 12px 18px;
+  }
+
+  .sticky-footer .toggle {
+    align-items: flex-start;
+    line-height: 1.35;
+  }
+
+  .sticky-footer .toggle input {
+    margin-top: 1px;
+    flex: none;
+  }
+
+  /* smaller type overall on phones */
+  html,
+  body {
+    font-size: 14px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  h2 {
+    font-size: 22px;
+  }
+
+  h3 {
+    font-size: 18px;
+  }
+
+  .hero h1 {
+    font-size: 26px;
+  }
+
+  .hero p.tag {
+    font-size: 17px;
+  }
+
+  .small {
+    font-size: 12px;
+  }
+
+  .checklist {
+    font-size: 15px;
+  }
+
+  .bigstat {
+    font-size: 20px;
+  }
+
+  .topic .name {
+    font-size: 14px;
+  }
+
+  .topic .meta,
+  .topic .small.muted {
+    font-size: 12px;
+  }
+
+  .chip {
+    font-size: 11px;
+  }
+
+  .btn {
+    font-size: 14px;
+  }
+
+  .toggle {
+    font-size: 12px;
+  }
+
+  .addrow input,
+  .addrow .btn {
+    font-size: 14px;
+  }
+}
+
+/* ---------- shorts: immersive full-screen feed (Reels / Shorts style) ---------- */
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--line);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app.app-shorts {
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 24px 18px;
+}
+
+.app-shorts .topbar {
+  flex: none;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 0 12px;
+}
+
+.app-shorts .brand {
+  font-size: 28px;
+}
+
+.app-shorts .brand span {
+  display: none;
+}
+
+.shorts {
+  --stage: #0e1116;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+/* desktop/tablet: a centred vertical "phone" frame; mobile: the whole screen */
+.shorts-viewport {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--stage);
+  color: #fff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  isolation: isolate;
+}
+
+.shorts-feed {
+  height: 100%;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+}
+
+/* while a sheet is open the feed must not snap to the next short underneath it */
+.shorts-feed.locked {
+  overflow-y: hidden;
+}
+
+.short-item {
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.short {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--stage);
+  container-type: size;
+}
+
+/* everything drawn on the video; the rail sits outside it on desktop */
+.short-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* landscape whiteboard renders sit on a blurred copy of themselves, like Shorts does */
+.short-backdrop {
+  position: absolute;
+  inset: -40px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) brightness(0.3) saturate(1.1);
+}
+
+/* portrait 9:16 renders fill the frame; on taller phones the blurred backdrop fills the bars */
+.short-video {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.short-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.short-screen video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+/* older 16:9 renders: a letterboxed board above the caption */
+.short.is-landscape .short-video {
+  padding: max(60px, 8cqh) 0 34cqh;
+}
+
+.short.is-landscape .short-screen {
+  height: auto;
+  max-height: 100%;
+}
+
+.short.is-landscape .short-screen video {
+  height: auto;
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  background: #fff;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.4);
+}
+
+.short-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 32px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+}
+
+.short-status .spinner,
+.shorts-empty .spinner {
+  border-color: rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+}
+
+.short-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(14, 17, 22, 0.62);
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+
+.short-play svg {
+  width: 26px;
+  height: 26px;
+  margin-left: 3px;
+  fill: currentColor;
+}
+
+/* readability gradients for the overlaid text */
+.short-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0) 80px);
+}
+
+/* ----- bottom-left: one light, compact caption; details open in the sheet ----- */
+.short-info {
+  position: absolute;
+  z-index: 3;
+  left: max(12px, env(safe-area-inset-left));
+  right: calc(72px + env(safe-area-inset-right));
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+}
+
+.short-caption {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  text-align: left;
+  /* plain text over both the white board and the dark bars: white with a firm shadow */
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.short-caption .short-avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.cap-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.cap-text strong,
+.cap-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cap-text strong {
+  font-size: 13.5px;
+}
+
+.cap-text span {
+  font-size: 11.5px;
+  opacity: 0.9;
+}
+
+.short-caption .more {
+  flex: none;
+  align-self: flex-end;
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.short-creator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.short-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--marker);
+  color: var(--ink);
+  font-family: var(--hand);
+  font-size: 17px;
+  text-shadow: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.short-topic {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.short-pill {
+  flex: none;
+  padding: 2px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.short-rail svg,
+.shorts-top svg,
+.shorts-nav svg,
+.sheet-close svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ----- right rail ----- */
+.short-rail {
+  position: absolute;
+  z-index: 3;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.short-rail button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 52px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+}
+
+.short-rail .ico {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(14, 17, 22, 0.62);
+  backdrop-filter: blur(6px);
+  transition: transform 0.12s, background 0.15s;
+}
+
+.short-rail svg {
+  width: 25px;
+  height: 25px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.short-rail em {
+  font-style: normal;
+  font-size: 21px;
+}
+
+.short-rail small {
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.short-rail button:hover .ico {
+  background: rgba(14, 17, 22, 0.78);
+}
+
+.short-rail button:active .ico {
+  transform: scale(0.9);
+}
+
+.short-rail .is-done .ico {
+  background: rgba(21, 128, 61, 0.85);
+}
+
+.short-progress {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: env(safe-area-inset-bottom);
+  height: 14px;
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+  background: linear-gradient(to top, rgba(31, 41, 51, 0.18) 3px, transparent 3px);
+}
+
+.short-progress div {
+  height: 3px;
+  background: var(--marker);
+}
+
+.short-toast {
+  position: absolute;
+  z-index: 7;
+  top: calc(64px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(14, 17, 22, 0.86);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ----- floating top bar ----- */
+.shorts-top {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.shorts-top > * {
+  pointer-events: auto;
+}
+
+.shorts-back {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(14, 17, 22, 0.62);
+  color: #fff;
+  backdrop-filter: blur(6px);
+}
+
+.shorts-back svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.2;
+}
+
+.shorts-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.shorts-heading strong,
+.shorts-heading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shorts-heading strong {
+  font-size: 15px;
+}
+
+.shorts-heading span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.shorts-counter {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(14, 17, 22, 0.62);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.shorts-alert {
+  position: absolute;
+  z-index: 6;
+  top: calc(60px + env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 13px;
+}
+
+.shorts-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* ----- bottom sheets (description, quiz, ask, rate) ----- */
+.sheet-backdrop {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.sheet-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sheet {
+  position: absolute;
+  z-index: 9;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 78%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 20px 20px 0 0;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.28);
+  transform: translateY(102%);
+  visibility: hidden;
+  transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.32s;
+}
+
+.sheet.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sheet-grab {
+  flex: none;
+  position: relative;
+  padding: 8px 52px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  touch-action: none;
+}
+
+.sheet-grab .handle {
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 8px;
+  border-radius: 2px;
+  background: #d1d5db;
+}
+
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+}
+
+.sheet-close:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.sheet-close svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.2;
+}
+
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 22px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.sheet-body > * + * {
+  margin-top: 12px;
+}
+
+.sheet-body h3 {
+  margin: 10px 0 4px;
+  font-size: 22px;
+}
+
+.short-creator.in-sheet .short-avatar {
+  box-shadow: none;
+}
+
+.short-creator.in-sheet .short-pill {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.sheet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sheet-body .sources,
+.sheet-body .ai-added,
+.sheet-body .uncertain {
+  padding: 10px 12px;
+}
+
+.transcript .label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.transcript p {
+  margin: 0;
+  color: #374151;
+}
+
+.sheet-body .quiz {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.sheet-body .quiz > .kicker {
+  display: none;
+}
+
+.sheet-body .quiz .q {
+  font-size: 20px;
+  line-height: 1.25;
+  margin-bottom: 12px;
+}
+
+.sheet-body .quiz label {
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  line-height: 1.45;
+}
+
+.sheet-body .ask form {
+  margin-top: 0;
+}
+
+.sheet-body .ask .answer {
+  margin-top: 14px;
+}
+
+.rate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rate-list button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.rate-list button:hover {
+  border-color: var(--ink);
+}
+
+.rate-list button.picked {
+  border-color: var(--ink);
+  background: #f8fafc;
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.rate-list .emoji {
+  font-size: 22px;
+}
+
+.rate-list .txt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.rate-list .txt strong {
+  font-size: 14px;
+}
+
+.rate-list .txt small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ----- desktop prev/next beside the frame ----- */
+.shorts-nav {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.shorts-nav button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.shorts-nav button:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
+.shorts-nav button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.shorts-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.shorts-nav svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.2;
+}
+
+.shorts-nav .count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.shorts-nav .count small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.shorts-nav .hint {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ----- desktop/tablet: the 9:16 short with an always-open details panel beside it ----- */
+@media (min-width: 761px) {
+  .shorts {
+    container-type: size;
+  }
+
+  .shorts-viewport {
+    --panel: clamp(380px, 34vw, 480px);
+    --gap: 24px;
+    aspect-ratio: auto;
+    width: min(100%, calc(100cqh * 9 / 16 + var(--panel) + var(--gap)));
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .short {
+    background: transparent;
+  }
+
+  .short-stage,
+  .shorts-empty {
+    right: calc(var(--panel) + var(--gap));
+    border-radius: 20px;
+    background: var(--stage);
+    box-shadow: 0 18px 50px rgba(15, 23, 42, 0.24);
+  }
+
+  .shorts-empty {
+    margin-right: calc(var(--panel) + var(--gap));
+  }
+
+  /* the frame is exactly 9:16 here, so a floating bar would cover the board's title;
+     the app top bar and the side nav (with the counter) take over its job */
+  .shorts-top,
+  .short-shade {
     display: none;
+  }
+
+  .shorts-alert {
+    top: 12px;
+    right: calc(var(--panel) + var(--gap) + 12px);
+  }
+
+  /* the bottom sheet becomes a static side panel */
+  .sheet.side {
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    left: auto;
+    right: 0;
+    width: var(--panel);
+    max-height: none;
+    padding-bottom: 0;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transform: none;
+    visibility: visible;
+    transition: none;
+  }
+
+  .side-head {
+    flex: none;
+    padding: 24px 26px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .side-head h3 {
+    margin: 12px 0 6px;
+    font-size: 21px;
+  }
+
+  .side-share {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    margin-left: auto;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .side-share:hover {
+    border-color: var(--ink);
+  }
+
+  .side-share svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .side-tabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 18px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg);
+  }
+
+  .side-tabs button {
+    flex: 1;
+    padding: 8px 6px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .side-tabs button:hover {
+    color: var(--ink);
+  }
+
+  .side-tabs button.on {
+    background: var(--paper);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .side .sheet-body {
+    padding: 20px 26px 28px;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .side .short-topic {
+    font-size: 13px;
+  }
+
+  .side .short-avatar {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+  }
+
+  .side .sheet-meta {
+    font-size: 11.5px;
+  }
+
+  .side .sources,
+  .side .ai-added,
+  .side .uncertain {
+    font-size: 12.5px;
+  }
+
+  .side .transcript .label {
+    font-size: 10px;
+  }
+
+  .side .quiz .q {
+    font-size: 18px;
+  }
+
+  .side .quiz label {
+    font-size: 13px;
+  }
+
+  .side .rate-list .txt strong {
+    font-size: 13px;
+  }
+
+  .side .rate-list .txt small {
+    font-size: 11.5px;
+  }
+
+  .side .rate-list .emoji {
+    font-size: 19px;
+  }
+
+  .side .sheet-body > * + * {
+    margin-top: 16px;
+  }
+}
+
+/* ----- phones: the short IS the screen ----- */
+@media (max-width: 760px) {
+  .app.app-shorts {
+    padding: 0;
+  }
+
+  .app-shorts .topbar,
+  .shorts-nav {
+    display: none;
+  }
+
+  .shorts {
+    gap: 0;
+  }
+
+  .shorts-viewport {
+    width: 100%;
+    aspect-ratio: auto;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  html:has(.app-shorts),
+  body:has(.app-shorts) {
+    background: #0e1116;
+  }
+}
+
+/* phones about as wide as the 9:16 board (e.g. 375x667): no bar above the video, so keep
+   only the back button and counter in the corners instead of covering the board's title */
+@media (max-width: 760px) and (min-aspect-ratio: 10 / 19) {
+  .shorts-heading {
+    visibility: hidden;
+  }
+
+  .shorts-top {
+    background: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .sheet.open,
+  .sheet-backdrop {
+    transition: none;
   }
 }

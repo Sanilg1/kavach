@@ -7,7 +7,7 @@ from typing import Optional
 
 from ..config import settings
 from ..models import Element, PlanPart, QuickCheck, Scene, TeachingPlan, Topic, TopicMap, Uncertainty
-from ..pdf.extract import ExtractedDoc
+from ..pdf.extract import ExtractedDoc, clean_title
 from . import prompts
 from .client import complete_json_with_retry
 
@@ -63,7 +63,7 @@ def build_topic_map(ex: ExtractedDoc) -> TopicMap:
     for i, t in enumerate(topics):
         t.learning_order = i + 1
     return TopicMap(
-        title=str(raw.get("title") or ex.title_guess or "Your document")[:120],
+        title=(clean_title(raw.get("title")) or ex.title_guess or "Your document")[:120],
         summary=str(raw.get("summary") or ""),
         topics=topics,
         uncertainties=[

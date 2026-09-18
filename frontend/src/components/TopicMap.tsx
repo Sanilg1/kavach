@@ -161,7 +161,7 @@ export default function TopicMap({ docId, onGenerate }: Props) {
 
         <div className="addrow">
           <input placeholder="+ Add a topic (e.g. TCP vs UDP)" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTopic()} />
-          <input placeholder="pages, e.g. 24, 25" value={newPages} onChange={(e) => setNewPages(e.target.value)} style={{ maxWidth: 150 }} />
+          <input placeholder="pages, e.g. 24, 25" value={newPages} onChange={(e) => setNewPages(e.target.value)} className="pages" inputMode="numeric" />
           <button className="btn secondary sm" onClick={addTopic}>
             Add topic
           </button>
@@ -169,18 +169,18 @@ export default function TopicMap({ docId, onGenerate }: Props) {
       </div>
 
       <div className="sticky-footer">
-        <div>
-          <div className="bigstat">
-            {estShorts} shorts · {fmtDuration(estDur)}
-          </div>
-          <label className="toggle">
-            <input type="checkbox" checked={aiEnhanced} onChange={(e) => setAiEnhanced(e.target.checked)} />
-            AI-enhanced mode <span className="muted small">(adds general knowledge, clearly marked)</span>
-          </label>
+        <div className="bigstat">
+          {estShorts} shorts · {fmtDuration(estDur)}
         </div>
         <button className="btn" onClick={generate} disabled={busy || selected.length === 0}>
           {busy ? "Starting…" : "Generate shorts →"}
         </button>
+        <label className="toggle">
+          <input type="checkbox" checked={aiEnhanced} onChange={(e) => setAiEnhanced(e.target.checked)} />
+          <span>
+            AI-enhanced mode <span className="muted small">(adds general knowledge, clearly marked)</span>
+          </span>
+        </label>
       </div>
       {error && <div className="error">{error}</div>}
     </>

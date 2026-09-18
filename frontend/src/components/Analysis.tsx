@@ -1,20 +1,24 @@
 import { Doc } from "../api";
 
 const STEPS: { key: string; label: string; reached: (d: Doc) => number }[] = [
-  { key: "read", label: "Reading document", reached: (d) => rank(d.status) },
-  { key: "concepts", label: "Identifying concepts", reached: (d) => rank(d.status) - 1 },
-  { key: "relations", label: "Building concept relationships", reached: (d) => rank(d.status) - 1 },
-  { key: "path", label: "Creating learning path", reached: (d) => rank(d.status) - 2 },
+  { key: "read", label: "Reading document", reached: (d) => rank(d) },
+  { key: "concepts", label: "Identifying concepts", reached: (d) => rank(d) - 1 },
+  { key: "relations", label: "Building concept relationships", reached: (d) => rank(d) - 1 },
+  { key: "path", label: "Creating learning path", reached: (d) => rank(d) - 2 },
 ];
 
-function rank(s: Doc["status"]): number {
+// FAILED after concepts were found means generation failed, not analysis
+const analysisFailed = (d: Doc) => d.status === "FAILED" && !d.concept_count;
+
+function rank(d: Doc): number {
   // UPLOADED=0 PROCESSING=1 ANALYZING=2 READY+=3
-  return { UPLOADED: 0, PROCESSING: 1, ANALYZING: 2, READY: 3, GENERATING: 3, COMPLETED: 3, FAILED: -1 }[s] ?? 0;
+  if (analysisFailed(d)) return -1;
+  return { UPLOADED: 0, PROCESSING: 1, ANALYZING: 2, READY: 3, GENERATING: 3, COMPLETED: 3, FAILED: 3 }[d.status] ?? 0;
 }
 
 export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onContinue: () => void; onRestart: () => void }) {
-  const failed = doc.status === "FAILED";
-  const ready = rank(doc.status) >= 3;
+  const failed = analysisFailed(doc);
+  const ready = rank(doc) >= 3;
   const suit = doc.suitability;
 
   return (
@@ -25,7 +29,7 @@ export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onC
       </p>
       <ul className="checklist">
         {STEPS.map((s, i) => {
-          const r = rank(doc.status);
+          const r = rank(doc);
           // step i is done when analysis has progressed past it
           const done = ready || r > i;
           const active = !ready && !failed && r === i;
@@ -67,7 +71,7 @@ export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onC
 
       {failed && <div className="error">Analysis failed: {doc.error || "unknown error"}</div>}
 
-      <div className="row" style={{ marginTop: 18 }}>
+      <div className="row actions-stack" style={{ marginTop: 18 }}>
         {ready && (
           <button className="btn" onClick={onContinue}>
             See your revision path →

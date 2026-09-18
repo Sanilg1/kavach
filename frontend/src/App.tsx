@@ -55,7 +55,7 @@ export default function App() {
     };
   }, [docId, refreshDoc]);
 
-  useEffect(() => writeHash(docId, screen === "upload" ? undefined : screen), [docId, screen]);
+  useEffect(() => writeHash(docId, docId ? screen : undefined), [docId, screen]);
 
   // keep state in sync when the hash is edited or the back button is used
   useEffect(() => {
@@ -77,21 +77,61 @@ export default function App() {
   const order: Screen[] = ["upload", "analysis", "topics", "feed"];
   const labels: Record<Screen, string> = { upload: "Upload", analysis: "Analyze", topics: "Topics", feed: "Shorts" };
 
+  // a stage is reachable once the current document has got that far
+  function reachable(s: Screen): boolean {
+    if (s === screen || s === "upload") return true;
+    if (!docId || !doc) return s === "analysis" && !!docId;
+    const analysed = (doc.concept_count ?? 0) > 0;
+    if (s === "analysis") return true;
+    if (s === "topics") return analysed;
+    return analysed && (["GENERATING", "COMPLETED", "FAILED"].includes(doc.status) || (doc.reels_completed ?? 0) > 0);
+  }
+  const furthest = [...order].reverse().find((s) => s !== "upload" && reachable(s));
+
   return (
-    <div className="app">
+    <div className={`app${screen === "feed" && docId ? " app-shorts" : ""}`}>
       <div className="topbar">
         <a className="brand" href="#" onClick={(e) => { e.preventDefault(); restart(); }}>
           Kavach
           <span>compress the delivery, not the knowledge</span>
         </a>
         <div className="steps">
-          {order.map((s) => (
-            <span key={s} className={`step ${s === screen ? "active" : order.indexOf(s) < order.indexOf(screen) ? "done" : ""}`}>
-              {labels[s]}
-            </span>
-          ))}
+          {order.map((s) => {
+            const ok = reachable(s);
+            const done = s !== screen && ok && (s === "upload" ? !!docId : order.indexOf(s) <= order.indexOf(furthest ?? "upload"));
+            return (
+              <button
+                key={s}
+                type="button"
+                className={`step ${s === screen ? "active" : done ? "done" : ""}`}
+                disabled={!ok}
+                aria-current={s === screen ? "step" : undefined}
+                title={ok ? `Go to ${labels[s]}` : "Not available yet"}
+                onClick={() => ok && setScreen(s)}
+              >
+                {labels[s]}
+              </button>
+            );
+          })}
         </div>
+        {docId && (
+          <button type="button" className="new-project" title="Start over with a new PDF" onClick={restart}>
+            + New PDF
+          </button>
+        )}
       </div>
+
+      {screen === "upload" && docId && doc && (
+        <div className="card current-doc">
+          <div>
+            <div className="muted small">Current PDF</div>
+            <strong>{doc.title || doc.filename}</strong>
+          </div>
+          <button type="button" className="btn ghost sm" onClick={() => setScreen(furthest ?? "analysis")}>
+            Back to {labels[furthest ?? "analysis"]} →
+          </button>
+        </div>
+      )}
 
       {screen === "upload" && (
         <Upload

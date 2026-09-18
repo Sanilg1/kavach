@@ -59,6 +59,27 @@ class ExtractedDoc:
         return "\n\n".join(x[: max(200, int(len(x) * ratio))] for x in parts)
 
 
+_OFFICE_PREFIX_RE = re.compile(r"^\s*(?:microsoft\s+)?(?:office\s+)?(?:word|powerpoint|excel)\s*[-:–]\s*", re.I)
+_FILE_EXT_RE = re.compile(r"\.(?:pptx?|docx?|xlsx?|pdf|odp|odt|key|pages|tex|txt)\s*$", re.I)
+_GENERIC_TITLE_RE = re.compile(
+    r"^(?:untitled(?:\s+\w+)?|presentation\s*\d*|(?:microsoft\s+)?(?:powerpoint|word|excel)(?:\s+(?:presentation|document|slides?))?"
+    r"|document\s*\d*|slide\s*(?:show)?\s*\d*|book\s*\d*|new\s+(?:document|presentation)|title|pdf|scan\w*\s*\d*"
+    r"|image\s*\d*|doc\s*\d*|file\s*\d*|\d+)$",
+    re.I,
+)
+
+
+def clean_title(raw: str | None) -> str:
+    """Strip Office export noise ("Microsoft PowerPoint - x.pptx") and reject
+    placeholder titles such as "Presentation1" or "PowerPoint Presentation"."""
+    t = re.sub(r"\s+", " ", str(raw or "")).strip()
+    for _ in range(2):
+        t = _FILE_EXT_RE.sub("", _OFFICE_PREFIX_RE.sub("", t)).strip(" -_:–")
+    if len(t) < 3 or _GENERIC_TITLE_RE.match(t):
+        return ""
+    return t
+
+
 _MINOR_WORDS = {"and", "or", "of", "the", "versus", "vs", "in", "to", "a", "an", "for", "with", "on"}
 _HEADING_RE = re.compile(r"^(?:\d+(?:\.\d+)*\s+)?[A-Z][A-Za-z0-9 ,:/&()\-]{2,70}$")
 
@@ -114,14 +135,11 @@ def extract(pdf_path: Path, max_pages: int = 0) -> ExtractedDoc:
     title = ""
     try:
         meta = doc.get_metadata_dict()
-        title = (meta.get("Title") or "").strip()
+        title = clean_title(meta.get("Title"))
     except Exception:
         pass
     if not title:
-        for p in pages:
-            if p.headings:
-                title = p.headings[0]
-                break
+        title = next((h for p in pages for h in (clean_title(x) for x in p.headings) if h), "")
     doc.close()
     return ExtractedDoc(page_count=n, pages=pages, title_guess=title)
 

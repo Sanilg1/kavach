@@ -18,3 +18,4 @@ frontend/.env.local
 
 # build cache
 frontend/tsconfig.tsbuildinfo
+PROGRESS.md

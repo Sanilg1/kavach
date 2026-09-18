@@ -51,7 +51,9 @@ export default function Upload({ onUploaded }: { onUploaded: (d: Doc) => void })
         ) : (
           <>
             <div className="btn" style={{ pointerEvents: "none" }}>Upload PDF</div>
-            <p className="muted small" style={{ marginBottom: 0 }}>Drag & drop or click · Max 60 pages · Text-based PDFs work best</p>
+            <p className="muted small" style={{ marginBottom: 0 }}><span className="hover-only">Drag & drop or click · </span>
+              <span className="touch-only">Tap to choose a file · </span>
+              Max 60 pages · Text-based PDFs work best</p>
           </>
         )}
       </div>

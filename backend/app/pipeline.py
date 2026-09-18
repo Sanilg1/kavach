@@ -56,6 +56,7 @@ def analyze_document(doc_id: str) -> None:
         db.update_document(doc_id, status="PROCESSING", progress="Reading document")
         pdf_path = st.storage.local_path(st.k_upload(doc_id))
         ex = pdfx.extract(pdf_path, max_pages=settings.MAX_PAGES)
+        ex.title_guess = ex.title_guess or pdfx.clean_title(Path(doc.get("filename") or "").stem)
         suit = pdfx.suitability(ex)
         st.put_json(st.k_chunks(doc_id), {"page_count": ex.page_count, "title": ex.title_guess, "pages": ex.as_chunks()})
         db.update_document(doc_id, status="ANALYZING", progress="Identifying concepts", page_count=ex.page_count,
