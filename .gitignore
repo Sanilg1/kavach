@@ -15,3 +15,6 @@ frontend/.env.local
 # misc
 .DS_Store
 *.log
+
+# build cache
+frontend/tsconfig.tsbuildinfo
