@@ -3,6 +3,7 @@ uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 pydantic>=2.7
 boto3>=1.35
+botocore[crt]>=1.35
 anthropic[bedrock]>=0.60
 pypdfium2>=4.30
 Pillow>=10.4

@@ -17,7 +17,7 @@ from botocore.exceptions import ClientError
 REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 BUCKET = os.environ.get("KAVACH_S3_BUCKET", "")
 PREFIX = os.environ.get("KAVACH_DDB_PREFIX", "kavach")
-MODEL = os.environ.get("KAVACH_BEDROCK_MODEL", "anthropic.claude-opus-5")
+MODEL = os.environ.get("KAVACH_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
 
 
 def ensure_bucket(s3):
@@ -77,13 +77,19 @@ def main():
     except ClientError as e:
         print(f"polly: FAILED ({e})")
     try:
-        from anthropic import AnthropicBedrockMantle
+        if os.environ.get("KAVACH_BRAIN", "converse") == "bedrock":
+            from anthropic import AnthropicBedrockMantle
 
-        c = AnthropicBedrockMantle(aws_region=REGION)
-        m = c.messages.create(model=MODEL, max_tokens=20, messages=[{"role": "user", "content": "Say ok"}])
-        print(f"bedrock ({MODEL}): ok -> {m.content[0].text!r}")
+            m = AnthropicBedrockMantle(aws_region=REGION).messages.create(
+                model=MODEL, max_tokens=20, messages=[{"role": "user", "content": "Say ok"}])
+            print(f"bedrock mantle ({MODEL}): ok -> {m.content[0].text!r}")
+        else:
+            r = boto3.client("bedrock-runtime", region_name=REGION).converse(
+                modelId=MODEL, messages=[{"role": "user", "content": [{"text": "Say ok"}]}], inferenceConfig={"maxTokens": 20})
+            print(f"bedrock converse ({MODEL}): ok -> {r['output']['message']['content'][0]['text']!r}")
     except Exception as e:  # noqa: BLE001
-        print(f"bedrock ({MODEL}): FAILED ({e})\n  -> enable model access in the Bedrock console, or set KAVACH_BEDROCK_MODEL / KAVACH_BRAIN=converse")
+        print(f"bedrock ({MODEL}): FAILED ({str(e)[:300]})\n  -> Bedrock console > Model access: submit the Anthropic "
+              "use-case form / request the model, or set KAVACH_BEDROCK_MODEL to an id your account can use")
 
     policy = {
         "Version": "2012-10-17",

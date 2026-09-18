@@ -21,7 +21,7 @@ class Settings:
 
     STORAGE = _env("KAVACH_STORAGE", "s3" if MODE == "aws" else "local")   # s3 | local
     DB = _env("KAVACH_DB", "dynamodb" if MODE == "aws" else "local")       # dynamodb | local
-    BRAIN = _env("KAVACH_BRAIN", "bedrock" if MODE == "aws" else "mock")   # bedrock | converse | mock
+    BRAIN = _env("KAVACH_BRAIN", "converse" if MODE == "aws" else "mock")  # converse | bedrock | mock
     TTS = _env("KAVACH_TTS", "polly" if MODE == "aws" else "mock")         # polly | mock
 
     S3_BUCKET = _env("KAVACH_S3_BUCKET", "kavach")
@@ -31,8 +31,9 @@ class Settings:
     DDB_TABLE_TOPICS = f"{DDB_TABLE_PREFIX}_topics"
     DDB_TABLE_REELS = f"{DDB_TABLE_PREFIX}_reels"
 
-    # Claude in Amazon Bedrock (Mantle client) model id, or a legacy Converse model id
-    BEDROCK_MODEL = _env("KAVACH_BEDROCK_MODEL", "anthropic.claude-opus-5")
+    # Bedrock model / inference-profile id. Converse: "global.anthropic.claude-opus-4-6-v1",
+    # "global.anthropic.claude-sonnet-4-6"; Mantle client: "anthropic.claude-opus-5".
+    BEDROCK_MODEL = _env("KAVACH_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
     BRAIN_EFFORT = _env("KAVACH_BRAIN_EFFORT", "high")
     BRAIN_MAX_TOKENS = int(_env("KAVACH_BRAIN_MAX_TOKENS", "32000"))
 

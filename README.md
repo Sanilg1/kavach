@@ -97,7 +97,7 @@ Then set in `backend/.env`:
 KAVACH_MODE=aws
 AWS_REGION=us-east-1
 KAVACH_S3_BUCKET=<bucket>
-KAVACH_BEDROCK_MODEL=anthropic.claude-opus-5      # Claude in Amazon Bedrock model id
+KAVACH_BEDROCK_MODEL=global.anthropic.claude-opus-4-6-v1   # Bedrock inference profile id
 KAVACH_POLLY_VOICE=Matthew
 ```
 
@@ -106,10 +106,16 @@ and start the backend as above. Credentials come from the usual AWS chain
 `python scripts/smoke_test.py` (prints presigned S3 URLs for the MP4s).
 
 Notes
-- The Brain uses the Anthropic SDK's `AnthropicBedrockMantle` client (Messages API on
-  Bedrock). If your account only has legacy Bedrock model ids
-  (e.g. `anthropic.claude-3-5-sonnet-20241022-v2:0`), set `KAVACH_BRAIN=converse` and
-  `KAVACH_BEDROCK_MODEL=<that id>` — the same prompts run through boto3 `converse()`.
+- **Model access**: in the Bedrock console open *Model access*, submit the one-time
+  Anthropic use-case form and enable the Claude models. Until then Bedrock returns
+  "Model use case details have not been submitted". Newer tiers (Opus 4.7+, Sonnet 5,
+  Fable) may show "not available for this account" — that needs an AWS request.
+- The Brain talks to Bedrock through the **Converse API** (boto3, streaming, adaptive
+  thinking) using inference-profile ids like `global.anthropic.claude-opus-4-6-v1`
+  (best quality) or `global.anthropic.claude-sonnet-4-6` (faster). Accounts with Claude
+  in Amazon Bedrock (Mantle) access can set `KAVACH_BRAIN=bedrock` and an
+  `anthropic.claude-*` id to use the Anthropic SDK client instead.
+- `aws login` sessions need `pip install "botocore[crt]"` (already in requirements).
 - Pieces can be mixed: e.g. `KAVACH_MODE=local` + `KAVACH_BRAIN=bedrock` + `KAVACH_TTS=polly`
   keeps files on disk but uses real AI.
 - `KAVACH_BRAIN_EFFORT` (`low|medium|high`) trades quality for latency per topic.

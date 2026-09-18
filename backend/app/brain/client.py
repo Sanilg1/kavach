@@ -1,9 +1,9 @@
 """LLM client abstraction for the Brain AI.
 
+    converse - Amazon Bedrock Converse API through boto3 (default; inference-profile ids
+               like "global.anthropic.claude-opus-4-6-v1")
     bedrock  - Claude in Amazon Bedrock through the Anthropic SDK's Mantle client
-               (model ids like "anthropic.claude-opus-5")
-    converse - legacy Bedrock runtime Converse API through boto3
-               (model ids like "anthropic.claude-3-5-sonnet-20241022-v2:0")
+               (model ids like "anthropic.claude-opus-5"; needs Mantle access on the account)
     mock     - deterministic offline brain (see mock.py) for local development
 """
 from __future__ import annotations
@@ -89,24 +89,65 @@ class BedrockMantleBrain:
 
 
 class BedrockConverseBrain:
+    """Amazon Bedrock Converse API (boto3). Works with inference-profile ids such as
+    global.anthropic.claude-opus-4-6-v1 and streams so long teaching plans do not hit
+    HTTP timeouts. Adaptive thinking is requested when the model supports it."""
+
     def __init__(self):
         import boto3
+        from botocore.config import Config
 
-        self.client = boto3.client("bedrock-runtime", region_name=settings.AWS_REGION)
+        self.client = boto3.client(
+            "bedrock-runtime", region_name=settings.AWS_REGION,
+            config=Config(read_timeout=900, connect_timeout=30, retries={"max_attempts": 3, "mode": "adaptive"}),
+        )
         self.model = settings.BEDROCK_MODEL
+        self._thinking_supported = True
 
     def complete_json(self, system: str, user: str, max_tokens: int | None = None) -> dict:
-        resp = self.client.converse(
+        from botocore.exceptions import ClientError
+
+        kwargs: dict[str, Any] = dict(
             modelId=self.model,
             system=[{"text": system}],
             messages=[{"role": "user", "content": [{"text": user}]}],
-            inferenceConfig={"maxTokens": min(max_tokens or settings.BRAIN_MAX_TOKENS, 32000), "temperature": 0.3},
+            inferenceConfig={"maxTokens": min(max_tokens or settings.BRAIN_MAX_TOKENS, 64000)},
         )
-        blocks = resp.get("output", {}).get("message", {}).get("content", [])
-        text = "".join(b.get("text", "") for b in blocks)
-        if resp.get("stopReason") == "max_tokens":
-            raise BrainError("The model output was truncated (max_tokens).")
+        if self._thinking_supported:
+            kwargs["additionalModelRequestFields"] = {"thinking": {"type": "adaptive"}}
+        else:
+            kwargs["inferenceConfig"]["temperature"] = 0.3
+        try:
+            text, stop = self._stream(kwargs)
+        except ClientError as e:
+            msg = str(e).lower()
+            if self._thinking_supported and ("thinking" in msg or "additionalmodelrequestfields" in msg or "validationexception" in msg):
+                log.warning("Bedrock rejected adaptive thinking for %s, retrying without: %s", self.model, e)
+                self._thinking_supported = False
+                kwargs.pop("additionalModelRequestFields", None)
+                kwargs["inferenceConfig"]["temperature"] = 0.3
+                text, stop = self._stream(kwargs)
+            else:
+                raise BrainError(f"Bedrock error: {e}") from e
+        if stop == "max_tokens":
+            raise BrainError("The model output was truncated (max_tokens). Increase KAVACH_BRAIN_MAX_TOKENS.")
         return _extract_json(text)
+
+    def _stream(self, kwargs: dict) -> tuple[str, str]:
+        resp = self.client.converse_stream(**kwargs)
+        parts: list[str] = []
+        stop = ""
+        for ev in resp["stream"]:
+            if "contentBlockDelta" in ev:
+                delta = ev["contentBlockDelta"]["delta"]
+                if "text" in delta:
+                    parts.append(delta["text"])
+            elif "messageStop" in ev:
+                stop = ev["messageStop"].get("stopReason", "")
+            elif "metadata" in ev:
+                usage = ev["metadata"].get("usage", {})
+                log.info("bedrock usage in=%s out=%s", usage.get("inputTokens"), usage.get("outputTokens"))
+        return "".join(parts), stop
 
 
 def _build():
