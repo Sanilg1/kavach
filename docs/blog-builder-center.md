@@ -85,5 +85,4 @@ inside the container over SSM Session Manager. Now stderr goes to a file and we 
 Real Bedrock lessons for every topic once the quota lands; OCR for scanned PDFs; a queue +
 autoscaling render workers; spaced-repetition scheduling of the quick checks.
 
-*Built by Sanil Grover (Thapar Institute of Engineering and Technology) with Claude Code as
-a pair programmer.*
+*Built by Sanil Grover, Thapar Institute of Engineering and Technology.*
