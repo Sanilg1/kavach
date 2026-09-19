@@ -33,6 +33,9 @@ question to check themselves — from *their* material, in minutes.
    lesson and downloadable revision notes.
 
 ## Built on AWS
+
+![Architecture](docs/architecture.png)
+
 | Service | Role |
 |---|---|
 | Amplify Hosting | React/Vite frontend (https) |

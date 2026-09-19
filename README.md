@@ -15,6 +15,8 @@ PDF ─▶ S3 ─▶ text extraction + suitability check ─▶ Bedrock (Brain A
      ─▶ FFmpeg MP4 ─▶ S3 ─▶ React feed (video · sources · quick check · ask · feedback)
 ```
 
+![Kavach architecture](docs/architecture.png)
+
 Everything runs **end to end on a laptop with no AWS account** (mock Brain, local files,
 Windows speech or silent narration) and switches to **S3 + DynamoDB + Bedrock + Polly** with
 environment variables.

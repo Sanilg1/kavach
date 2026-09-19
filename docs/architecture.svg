@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" font-family="Inter, Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2933"/>
+    </marker>
+    <style>
+      .box { fill:#ffffff; stroke:#1f2933; stroke-width:2; rx:12; }
+      .aws { fill:#fff7ed; stroke:#ea580c; }
+      .ai  { fill:#ede9fe; stroke:#7c3aed; }
+      .data{ fill:#dbeafe; stroke:#1d4ed8; }
+      .title { font-size:15px; font-weight:700; fill:#1f2933; }
+      .sub { font-size:12px; fill:#6b7280; }
+      .lbl { font-size:12px; fill:#1f2933; }
+      .edge { stroke:#1f2933; stroke-width:2; fill:none; marker-end:url(#arrow); }
+      .dash { stroke-dasharray:6 5; }
+    </style>
+  </defs>
+  <rect width="1200" height="720" fill="#fbfbf8"/>
+  <text x="24" y="36" font-size="22" font-weight="700" fill="#1f2933">Kavach — architecture on AWS</text>
+  <text x="24" y="58" class="sub">PDF → learning path → narrated whiteboard shorts. AI plans; code renders.</text>
+
+  <!-- student -->
+  <rect x="40" y="110" width="170" height="70" class="box"/>
+  <text x="125" y="140" text-anchor="middle" class="title">Student</text>
+  <text x="125" y="160" text-anchor="middle" class="sub">browser / phone</text>
+
+  <!-- amplify -->
+  <rect x="290" y="100" width="230" height="90" class="box aws"/>
+  <text x="405" y="128" text-anchor="middle" class="title">AWS Amplify Hosting</text>
+  <text x="405" y="148" text-anchor="middle" class="sub">React / Vite shorts feed</text>
+  <text x="405" y="166" text-anchor="middle" class="sub">upload · topics · quiz · ask · rate</text>
+
+  <!-- cloudfront -->
+  <rect x="600" y="100" width="200" height="90" class="box aws"/>
+  <text x="700" y="128" text-anchor="middle" class="title">Amazon CloudFront</text>
+  <text x="700" y="148" text-anchor="middle" class="sub">HTTPS for the API</text>
+  <text x="700" y="166" text-anchor="middle" class="sub">caching disabled</text>
+
+  <!-- ec2 -->
+  <rect x="880" y="80" width="280" height="130" class="box aws"/>
+  <text x="1020" y="108" text-anchor="middle" class="title">Amazon EC2 · Docker</text>
+  <text x="1020" y="128" text-anchor="middle" class="sub">FastAPI API + worker threads</text>
+  <text x="1020" y="146" text-anchor="middle" class="sub">IAM instance role, no static keys</text>
+  <text x="1020" y="168" text-anchor="middle" class="lbl">extract → plan → narrate → render</text>
+  <text x="1020" y="188" text-anchor="middle" class="lbl">→ MP4 · combine · notes → S3 / DynamoDB</text>
+
+  <!-- edges top row -->
+  <path d="M210,145 L290,145" class="edge"/>
+  <path d="M520,145 L600,145" class="edge"/>
+  <path d="M800,145 L880,145" class="edge"/>
+  <text x="250" y="135" text-anchor="middle" class="sub">https</text>
+  <text x="560" y="135" text-anchor="middle" class="sub">fetch</text>
+  <text x="840" y="135" text-anchor="middle" class="sub">http :80</text>
+
+  <!-- brain -->
+  <rect x="880" y="290" width="280" height="120" class="box ai"/>
+  <text x="1020" y="318" text-anchor="middle" class="title">Amazon Bedrock · Claude Opus 4.6</text>
+  <text x="1020" y="338" text-anchor="middle" class="sub">Converse API, streaming, adaptive thinking</text>
+  <text x="1020" y="356" text-anchor="middle" class="sub">PDF + page images attached</text>
+  <text x="1020" y="378" text-anchor="middle" class="lbl">topic map · teaching-plan JSON · Q&amp;A</text>
+  <text x="1020" y="396" text-anchor="middle" class="lbl">regeneration from feedback</text>
+  <path d="M1020,210 L1020,290" class="edge"/>
+  <text x="1090" y="254" text-anchor="middle" class="sub">JSON only</text>
+
+  <!-- polly -->
+  <rect x="600" y="290" width="200" height="120" class="box aws"/>
+  <text x="700" y="318" text-anchor="middle" class="title">Amazon Polly</text>
+  <text x="700" y="338" text-anchor="middle" class="sub">neural narration per scene</text>
+  <text x="700" y="358" text-anchor="middle" class="sub">word-level speech marks</text>
+  <text x="700" y="378" text-anchor="middle" class="lbl">→ synced captions</text>
+  <path d="M880,190 C 840,190 760,230 720,290" class="edge"/>
+
+  <!-- renderer -->
+  <rect x="290" y="290" width="230" height="120" class="box"/>
+  <text x="405" y="318" text-anchor="middle" class="title">Whiteboard renderer (code)</text>
+  <text x="405" y="338" text-anchor="middle" class="sub">Pillow hand-drawn primitives</text>
+  <text x="405" y="356" text-anchor="middle" class="sub">12 primitives · 8 animations</text>
+  <text x="405" y="378" text-anchor="middle" class="lbl">frames → FFmpeg → 720×1280 MP4</text>
+  <text x="405" y="396" text-anchor="middle" class="lbl">deterministic, ~6 s per short</text>
+  <path d="M600,350 L520,350" class="edge"/>
+  <text x="560" y="340" text-anchor="middle" class="sub">audio + marks</text>
+
+  <!-- s3 -->
+  <rect x="290" y="490" width="230" height="110" class="box data"/>
+  <text x="405" y="518" text-anchor="middle" class="title">Amazon S3</text>
+  <text x="405" y="538" text-anchor="middle" class="sub">uploads · plans · audio · videos</text>
+  <text x="405" y="556" text-anchor="middle" class="sub">presigned playback URLs</text>
+  <text x="405" y="576" text-anchor="middle" class="sub">deploy bundle</text>
+  <path d="M405,410 L405,490" class="edge"/>
+  <text x="440" y="455" class="sub">PDF · plans · MP4 + poster</text>
+
+  <!-- dynamodb -->
+  <rect x="600" y="490" width="200" height="110" class="box data"/>
+  <text x="700" y="518" text-anchor="middle" class="title">Amazon DynamoDB</text>
+  <text x="700" y="538" text-anchor="middle" class="sub">documents · topics · reels</text>
+  <text x="700" y="556" text-anchor="middle" class="sub">status, sources, quick checks</text>
+  <text x="700" y="576" text-anchor="middle" class="sub">GSI by_document</text>
+  <path d="M960,210 C 960,260 860,430 780,490" class="edge"/>
+
+
+  <!-- student plays from s3 -->
+  <path d="M290,545 C 200,545 125,400 125,180" class="edge dash"/>
+  <text x="150" y="380" class="sub">video plays</text>
+  <text x="150" y="396" class="sub">straight from S3</text>
+
+  <!-- legend / ops -->
+  <rect x="880" y="490" width="280" height="110" class="box"/>
+  <text x="1020" y="518" text-anchor="middle" class="title">Ops</text>
+  <text x="1020" y="540" text-anchor="middle" class="sub">IAM roles · SSM Session Manager</text>
+  <text x="1020" y="558" text-anchor="middle" class="sub">Service Quotas · CloudWatch logs</text>
+  <text x="1020" y="580" text-anchor="middle" class="lbl">deploy_ec2.py · deploy_amplify.py</text>
+
+  <text x="24" y="660" class="sub">Regions: ap-south-1 (Mumbai) for Amplify, CloudFront origin, EC2, S3, DynamoDB, Polly · us-west-2 for Bedrock (quotas).</text>
+  <text x="24" y="680" class="sub">If Bedrock is quota-limited the API falls back to an offline planner and retries Bedrock after a cooldown; every document records which brain produced it.</text>
+  <text x="24" y="700" class="sub">Local mode runs the same code with filesystem storage, a JSON DB and Windows speech — no AWS account needed.</text>
+</svg>
