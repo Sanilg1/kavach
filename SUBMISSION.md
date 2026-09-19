@@ -20,7 +20,7 @@ learning order, a short visual explanation per concept, the exact source pages, 
 question to check themselves — from *their* material, in minutes.
 
 ## What it does
-1. Upload a PDF (≤ 60 pages). Kavach extracts text and page images and checks suitability.
+1. Upload notes as PDF, DOCX, PPTX, TXT or Markdown (≤ 60 pages); non-PDFs are converted to PDF. Kavach extracts text and page images and checks suitability.
 2. The Brain AI (Claude on Amazon Bedrock) builds a **topic map**: concepts, prerequisites,
    difficulty, recommended learning order, estimated shorts.
 3. The student adds/removes/reorders topics.

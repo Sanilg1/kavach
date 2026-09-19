@@ -25,7 +25,7 @@ export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onC
     <div className="card">
       <h2>{ready ? "Your PDF is ready" : "Analyzing your PDF…"}</h2>
       <p className="muted">
-        {doc.filename} · {doc.page_count} pages
+        {doc.filename} · {doc.page_count} pages{doc.source_type && doc.source_type !== "pdf" ? ` (converted from ${doc.source_type.toUpperCase()})` : ""}
       </p>
       <ul className="checklist">
         {STEPS.map((s, i) => {
@@ -88,7 +88,7 @@ export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onC
         )}
         {(failed || ready) && (
           <button className="btn ghost" onClick={onRestart}>
-            Upload a different PDF
+            Upload different notes
           </button>
         )}
       </div>

@@ -20,6 +20,7 @@ export interface Uncertainty {
 export interface Doc {
   document_id: string;
   filename: string;
+  source_type?: string;
   page_count: number;
   status: DocStatus;
   progress?: string;

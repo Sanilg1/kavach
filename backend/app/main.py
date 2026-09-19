@@ -1,6 +1,6 @@
 """Kavach backend API (FastAPI).
 
-POST /documents                      upload PDF -> analysis starts in background
+POST /documents                      upload PDF/DOCX/PPTX/TXT/MD -> converted to PDF, analysis starts
 GET  /documents/{id}                 status + suitability + estimates
 GET  /documents/{id}/topics          topic map / learning path
 POST /documents/{id}/topics          add/remove/reorder topics
@@ -30,6 +30,7 @@ from .brain.client import brain_status
 from .config import settings
 from .db import db, now_iso
 from .models import AskRequest, FeedbackRequest, GenerateRequest, RegenerateRequest, TopicUpdateRequest
+from .pdf import convert
 from .pdf.extract import page_count
 from .worker import worker
 
@@ -93,28 +94,37 @@ def health():
 # ---------------------------------------------------------------- documents
 @app.post("/documents")
 async def upload_document(file: UploadFile = File(...)):
-    if not (file.filename or "").lower().endswith(".pdf") and file.content_type != "application/pdf":
-        raise HTTPException(400, "Please upload a PDF file.")
+    filename = file.filename or "upload.pdf"
+    if not convert.is_supported(filename):
+        raise HTTPException(400, f"Unsupported file type. Please upload {convert.ACCEPT_LABEL}.")
     data = await file.read()
     if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
-        raise HTTPException(413, f"PDF is larger than {settings.MAX_UPLOAD_MB} MB.")
-    if not data.startswith(b"%PDF"):
+        raise HTTPException(413, f"File is larger than {settings.MAX_UPLOAD_MB} MB.")
+    kind = convert.source_type(filename)
+    if kind == "pdf" and not data.startswith(b"%PDF"):
         raise HTTPException(400, "This file does not look like a PDF.")
     doc_id = uuid.uuid4().hex[:12]
-    tmp = settings.WORK_DIR / f"{doc_id}.pdf"
-    tmp.write_bytes(data)
+    src = settings.WORK_DIR / f"{doc_id}.{kind}"
+    src.write_bytes(data)
     try:
-        n = page_count(tmp)
+        pdf_path = convert.convert_to_pdf(src, filename, settings.WORK_DIR / f"{doc_id}.pdf")
+        n = page_count(pdf_path)
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
-        tmp.unlink(missing_ok=True)
-        raise HTTPException(400, f"Could not open PDF: {e}")
+        src.unlink(missing_ok=True)
+        raise HTTPException(400, f"Could not read this {kind.upper()} file: {str(e)[:200]}")
     if n > settings.MAX_PAGES:
-        tmp.unlink(missing_ok=True)
-        raise HTTPException(400, f"PDF has {n} pages; the maximum is {settings.MAX_PAGES}.")
-    st.storage.put_file(st.k_upload(doc_id), tmp, "application/pdf")
-    tmp.unlink(missing_ok=True)
+        src.unlink(missing_ok=True)
+        pdf_path.unlink(missing_ok=True)
+        raise HTTPException(400, f"The document has {n} pages; the maximum is {settings.MAX_PAGES}.")
+    st.storage.put_file(st.k_upload(doc_id), pdf_path, "application/pdf")
+    if kind != "pdf":
+        st.storage.put_file(f"uploads/{doc_id}.{kind}", src)
+        src.unlink(missing_ok=True)
+    pdf_path.unlink(missing_ok=True)
     doc = {
-        "document_id": doc_id, "filename": file.filename, "page_count": n, "status": "UPLOADED",
+        "document_id": doc_id, "filename": filename, "source_type": kind, "page_count": n, "status": "UPLOADED",
         "progress": "Uploaded", "created_at": now_iso(), "size_bytes": len(data),
     }
     db.put_document(doc)

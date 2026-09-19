@@ -116,7 +116,7 @@ export default function App() {
         </div>
         {docId && (
           <button type="button" className="new-project" title="Start over with a new PDF" onClick={restart}>
-            + New PDF
+            + New notes
           </button>
         )}
       </div>

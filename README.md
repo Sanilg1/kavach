@@ -5,7 +5,7 @@
 **Live demo:** https://main.d1ex6vljuszbzw.amplifyapp.com · API: https://di1ubb11ugmj1.cloudfront.net/health
 (Amplify Hosting → CloudFront → EC2/Docker → S3 · DynamoDB · Polly · Bedrock, region ap-south-1)
 
-Kavach turns an educational PDF (≤ 60 pages) into a learning path of 30–60 second
+Kavach turns educational notes — PDF, Word, PowerPoint, text or Markdown (≤ 60 pages) — into a learning path of 30–60 second
 **whiteboard revision shorts** with AI narration, PDF source references, quick-check
 questions, follow-up Q&A and feedback-driven regeneration.
 
@@ -172,7 +172,7 @@ with generation moved to a second Lambda / Step Functions.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/documents` | upload PDF (multipart `file`) → `document_id`, analysis starts |
+| POST | `/documents` | upload PDF / DOCX / PPTX / TXT / MD (multipart `file`) → converted to PDF, `document_id`, analysis starts |
 | GET | `/documents/{id}` | status (`UPLOADED…COMPLETED/FAILED`), suitability, estimates |
 | GET | `/documents/{id}/topics` | topic map + recommended learning order |
 | POST | `/documents/{id}/topics` | `{selected_topic_ids, order, added_topics}` |

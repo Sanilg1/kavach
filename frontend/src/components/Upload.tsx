@@ -10,8 +10,8 @@ export default function Upload({ onUploaded }: { onUploaded: (d: Doc) => void })
   async function handle(file: File | undefined) {
     if (!file) return;
     setError(null);
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Please choose a PDF file.");
+    if (!/\.(pdf|docx|pptx|txt|md|markdown)$/i.test(file.name)) {
+      setError("Please choose a PDF, DOCX, PPTX, TXT or Markdown file.");
       return;
     }
     setBusy(true);
@@ -27,7 +27,7 @@ export default function Upload({ onUploaded }: { onUploaded: (d: Doc) => void })
 
   return (
     <div className="hero">
-      <h1>Turn your PDF into revision shorts</h1>
+      <h1>Turn your notes into revision shorts</h1>
       <p className="tag">Compress the delivery, not the knowledge.</p>
       <div
         className={`dropzone ${over ? "over" : ""}`}
@@ -43,23 +43,23 @@ export default function Upload({ onUploaded }: { onUploaded: (d: Doc) => void })
           handle(e.dataTransfer.files?.[0]);
         }}
       >
-        <input ref={inputRef} type="file" accept="application/pdf,.pdf" onChange={(e) => handle(e.target.files?.[0])} />
+        <input ref={inputRef} type="file" accept=".pdf,.docx,.pptx,.txt,.md,.markdown,application/pdf" onChange={(e) => handle(e.target.files?.[0])} />
         {busy ? (
           <div className="row" style={{ justifyContent: "center" }}>
             <div className="spinner" /> Uploading…
           </div>
         ) : (
           <>
-            <div className="btn" style={{ pointerEvents: "none" }}>Upload PDF</div>
+            <div className="btn" style={{ pointerEvents: "none" }}>Upload notes</div>
             <p className="muted small" style={{ marginBottom: 0 }}><span className="hover-only">Drag & drop or click · </span>
               <span className="touch-only">Tap to choose a file · </span>
-              Max 60 pages · Text-based PDFs work best</p>
+              PDF, DOCX, PPTX, TXT or Markdown · up to 60 pages</p>
           </>
         )}
       </div>
       {error && <div className="error">{error}</div>}
       <p className="muted small" style={{ marginTop: 28 }}>
-        Kavach reads your PDF, builds a learning path, and turns each concept into a 30–60 second whiteboard lesson with narration, source pages and a quick check.
+        Kavach reads your PDF, Word, PowerPoint or text notes, builds a learning path, and turns each concept into a 30–60 second whiteboard lesson with narration, source pages and a quick check.
       </p>
     </div>
   );
