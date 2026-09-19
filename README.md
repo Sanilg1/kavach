@@ -130,26 +130,36 @@ Notes
 
 ---
 
-## 3. Deploy
+## 3. Deploy on AWS (one command each)
 
-**Backend (container):**
+**Backend → EC2 (Docker) + CloudFront (HTTPS).** No local Docker needed: the script zips
+`backend/`, uploads it to S3, creates an instance role (S3/DynamoDB/Bedrock/Polly), a
+security group and a t3.medium Amazon Linux 2023 instance whose user-data builds and runs
+the container; then puts CloudFront in front so the HTTPS frontend can call it.
 
-```bash
+```powershell
 cd backend
-docker build -t kavach-backend .
-# push to ECR, then run on AWS App Runner (simplest) or ECS Fargate with the env vars above
-# and an IAM role carrying the policy printed by scripts/aws_setup.py.
+python scripts/deploy_ec2.py          # prints http://<ec2> and https://<cloudfront>
+python scripts/deploy_ec2.py --status
 ```
 
-Generation runs in background threads inside the container (`KAVACH_WORKERS`). The image
-also exposes `app.main.handler` (Mangum) so the API can run as a Lambda container image
-behind API Gateway; for that layout move `generate_document` / `regenerate_reel` into a
-second Lambda (or Step Functions) triggered by the API so long renders are not bound by the
-API timeout — the pipeline functions are already self-contained for this.
+Re-running replaces the instance with the current code (state lives in S3/DynamoDB, so
+nothing is lost). Logs: `/var/log/kavach-init.log` and `docker logs kavach` via SSM
+Session Manager.
 
-**Frontend (Amplify Hosting):** connect the repo, app root `frontend/` (`amplify.yml` is
-included), and set the environment variable `VITE_API_URL=https://<backend-url>`.
-Set `KAVACH_CORS_ORIGINS=https://<amplify-domain>` on the backend.
+**Frontend → Amplify Hosting (manual zip deployment, no GitHub connection needed).**
+
+```powershell
+cd frontend
+python deploy_amplify.py --api https://<cloudfront-domain>
+```
+
+Builds with `VITE_API_URL`, uploads `dist/` and prints `https://main.<app>.amplifyapp.com`.
+
+**Alternatives:** the Dockerfile also runs on App Runner / ECS Fargate (App Runner throttles
+CPU between requests, which stalls background rendering - prefer ECS or EC2), and
+`app.main.handler` (Mangum) lets the API run as a Lambda container image behind API Gateway
+with generation moved to a second Lambda / Step Functions.
 
 ---
 
