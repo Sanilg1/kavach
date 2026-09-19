@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,10 @@ import pypdfium2 as pdfium
 
 from ..config import settings
 from ..models import Suitability
+
+# PDFium is not thread-safe: every call into pypdfium2 goes through this lock (topics are
+# planned in parallel threads and each one renders page images for the brain).
+_PDFIUM_LOCK = threading.RLock()
 
 
 @dataclass
@@ -111,6 +116,11 @@ def _ocr_page(page: pdfium.PdfPage) -> Optional[str]:
 
 
 def extract(pdf_path: Path, max_pages: int = 0) -> ExtractedDoc:
+    with _PDFIUM_LOCK:
+        return _extract(pdf_path, max_pages)
+
+
+def _extract(pdf_path: Path, max_pages: int = 0) -> ExtractedDoc:
     doc = pdfium.PdfDocument(str(pdf_path))
     n = len(doc)
     limit = min(n, max_pages) if max_pages else n
@@ -145,18 +155,20 @@ def extract(pdf_path: Path, max_pages: int = 0) -> ExtractedDoc:
 
 
 def page_count(pdf_path: Path) -> int:
-    doc = pdfium.PdfDocument(str(pdf_path))
-    n = len(doc)
-    doc.close()
-    return n
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(pdf_path))
+        n = len(doc)
+        doc.close()
+        return n
 
 
 def render_page_png(pdf_path: Path, page_no: int, scale: float = 1.5) -> bytes:
-    doc = pdfium.PdfDocument(str(pdf_path))
-    page = doc[page_no - 1]
-    img = page.render(scale=scale).to_pil().convert("RGB")
-    page.close()
-    doc.close()
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(pdf_path))
+        page = doc[page_no - 1]
+        img = page.render(scale=scale).to_pil().convert("RGB")
+        page.close()
+        doc.close()
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -164,11 +176,12 @@ def render_page_png(pdf_path: Path, page_no: int, scale: float = 1.5) -> bytes:
 
 def render_page_jpeg(pdf_path: Path, page_no: int, scale: float = 1.0, quality: int = 80) -> bytes:
     """Compact page image for the brain (~60-120 KB at scale 1.0)."""
-    doc = pdfium.PdfDocument(str(pdf_path))
-    page = doc[page_no - 1]
-    img = page.render(scale=scale).to_pil().convert("RGB")
-    page.close()
-    doc.close()
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(pdf_path))
+        page = doc[page_no - 1]
+        img = page.render(scale=scale).to_pil().convert("RGB")
+        page.close()
+        doc.close()
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality, optimize=True)
     return buf.getvalue()

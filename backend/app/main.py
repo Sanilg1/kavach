@@ -43,6 +43,27 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _recover_interrupted_jobs() -> None:
+    """A crash or redeploy kills in-flight background jobs; mark them so the UI does not
+    show a spinner forever and the student can regenerate."""
+    try:
+        for d in db.list_documents():
+            if d.get("status") in ("PROCESSING", "ANALYZING"):
+                db.update_document(d["document_id"], status="FAILED", progress="Interrupted by a server restart",
+                                   error="Analysis was interrupted by a server restart. Please upload again.")
+            elif d.get("status") == "GENERATING":
+                db.update_document(d["document_id"], status="READY", progress="Interrupted by a server restart",
+                                   error="Generation was interrupted by a server restart. Generate again to resume.")
+                for r in db.list_reels(d["document_id"]):
+                    if r.get("status") in ("PENDING", "PLANNING", "NARRATING", "RENDERING"):
+                        db.update_reel(r["reel_id"], status="FAILED", error="Interrupted by a server restart")
+            if d.get("combined_status") == "BUILDING":
+                db.update_document(d["document_id"], combined_status="FAILED", combined_error="Interrupted by a server restart")
+    except Exception:  # noqa: BLE001
+        log.exception("startup recovery failed")
+
+
 def _media_url(key: str | None) -> str | None:
     return st.storage.url(key) if key else None
 
