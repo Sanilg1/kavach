@@ -222,6 +222,56 @@ Shorts are portrait 9:16 (720x1280) by default; set `KAVACH_VIDEO_WIDTH/HEIGHT` 
   and quick checks as Markdown.
 - Progress bar burned into every short; `backend/.env` is loaded automatically.
 
+## What we learned (First Commit, 17–20 Sep 2026)
+
+**Product**
+- *Compress the delivery, not the knowledge* only works if the AI is forced to plan, not
+  summarise. Asking for a **teaching plan JSON** (concepts → prerequisites → learning order
+  → scenes → primitives → quick check) produced far better lessons than "make a video about
+  this PDF". The renderer contract in `app/brain/prompts.py` is the most important file.
+- Students watch shorts muted: **synced captions** (Polly word-level speech marks) turned
+  out to matter as much as the drawings. Polly strips punctuation from marks, so we map
+  byte offsets back to the original text to keep sentence boundaries.
+- Keeping AI-added context visibly separate from the PDF's own content is cheap to build
+  and the feature students trusted most.
+
+**AWS**
+- **Amazon Bedrock model access moved from a console page to an API.** The one-time
+  Anthropic use-case form is now `bedrock:PutUseCaseForModelAccess` with an undocumented
+  JSON body (`intendedUsers` is `"0"`/`"1"`, not a string label). We reverse-engineered it
+  from `ValidationException`s.
+- **New AWS accounts get near-zero Bedrock quotas** ("Too many tokens per day") on *every*
+  vendor's models, even though `get_aws_default_service_quota` reports millions. Quotas are
+  also **per region** — Mumbai showed 0 for Claude 4.6 while us-west-2 had 10k RPM — so the
+  Bedrock region is a separate setting from the data region. Per-minute increases are
+  self-service; per-day ones need a support case.
+- **Deterministic video beats generative video** for education: Pillow + FFmpeg render a
+  40 s short in ~6 s on a t3.medium, every run is reproducible, and there is nothing to
+  hallucinate in the visuals.
+- **App Runner throttles CPU between requests**, which stalls background rendering; a plain
+  EC2 container with an instance role (no static keys) was the simplest reliable host, with
+  CloudFront in front so the HTTPS Amplify site can call it.
+- Presigned S3 URLs change on every poll; the React player has to pin the video `src` or
+  playback restarts every 3 seconds.
+- A Linux-only `subprocess.communicate()` bug (it flushes a stdin pipe you already closed)
+  made every render "fail" on the server while succeeding on Windows — caught only by
+  running the smoke test inside the container over SSM.
+
+## Known limitations (honest status at submission)
+
+- **Bedrock is wired, tested and deployed but throttled.** Claude Opus 4.6 answers small
+  requests on this account; real teaching-plan requests hit the new-account daily token
+  cap on all models. Four quota-increase cases are open with AWS
+  (178973245700023, 178973245400759, 178973245300071, 178973245300119). The live demo
+  therefore runs the **offline mock brain** (`KAVACH_BRAIN=mock`), which builds the topic
+  map from the PDF's headings and uses a hand-written plan for the TCP handshake topic;
+  other topics get generic lessons. Switching to Claude is one line in `backend/.env` +
+  `python scripts/deploy_ec2.py`.
+- Only text-based PDFs are handled well; OCR is an optional hook (pytesseract).
+- Single instance, in-process job queue: fine for a demo, not for many concurrent users
+  (next step: SQS + a render worker autoscaling group, or Step Functions).
+- English only; one Polly voice.
+
 ## MVP success criteria (spec §28)
 
 Upload · S3 · Bedrock analysis · topic map · learning order · add/remove topics ·
