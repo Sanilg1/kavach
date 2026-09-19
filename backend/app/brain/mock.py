@@ -114,7 +114,7 @@ class MockBrain:
             seen.add(t["topic_id"])
         return {
             "title": title,
-            "summary": f"This document covers {len(topics)} main concepts across {len(pages)} pages. (Offline mock analysis - connect Bedrock for real understanding.)",
+            "summary": f"This document covers {len(topics)} main concepts across {len(pages)} pages. (Offline analysis from the document's headings - Amazon Bedrock was not available for this run.)",
             "topics": topics,
             "uncertainties": [],
         }

@@ -42,6 +42,15 @@ export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onC
         })}
       </ul>
 
+      {ready && doc.brain && (
+        <p className="small muted" style={{ margin: "0 0 6px" }}>
+          {doc.brain.startsWith("bedrock") ? (
+            <span className="chip purple">Analysed by Claude on Amazon Bedrock</span>
+          ) : (
+            <span className="chip orange">Offline analysis · Bedrock quota pending</span>
+          )}
+        </p>
+      )}
       {ready && (
         <div className="bigstat">
           {doc.concept_count} concepts found · {doc.estimated_shorts} shorts · ~{Math.max(1, Math.round((doc.estimated_duration || 0) / 60))} min

@@ -38,6 +38,7 @@ export interface Doc {
   combined_url?: string | null;
   combined_duration?: number;
   combined_error?: string;
+  brain?: string;
 }
 
 export interface Topic {

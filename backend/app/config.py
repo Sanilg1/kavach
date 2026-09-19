@@ -55,6 +55,9 @@ class Settings:
     BEDROCK_MODEL = _env("KAVACH_BEDROCK_MODEL", "us.anthropic.claude-opus-4-6-v1")
     BRAIN_EFFORT = _env("KAVACH_BRAIN_EFFORT", "high")
     ANTHROPIC_MODEL = _env("KAVACH_ANTHROPIC_MODEL", "claude-opus-5")   # KAVACH_BRAIN=anthropic only
+    # if Bedrock is quota-limited, answer with the offline brain and retry Bedrock after a cooldown
+    BRAIN_FALLBACK = _env("KAVACH_BRAIN_FALLBACK", "1") not in ("0", "false", "no")
+    BRAIN_COOLDOWN = float(_env("KAVACH_BRAIN_COOLDOWN", "600"))
     BRAIN_MAX_TOKENS = int(_env("KAVACH_BRAIN_MAX_TOKENS", "32000"))
     # send the PDF / page images to the brain so it can see diagrams, tables, equations
     BRAIN_VISION = _env("KAVACH_BRAIN_VISION", "1") not in ("0", "false", "no")

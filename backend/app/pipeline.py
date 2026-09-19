@@ -15,6 +15,7 @@ from PIL import Image
 
 from . import storage as st
 from .brain import planner
+from .brain.client import brain_used
 from .config import settings
 from .db import db, now_iso
 from .models import PlanPart, TeachingPlan, Topic, TopicMap
@@ -70,7 +71,8 @@ def analyze_document(doc_id: str) -> None:
         est_dur = sum(t.estimated_duration for t in tmap.topics if t.selected)
         db.update_document(doc_id, status="READY", progress="Learning path ready", title=tmap.title,
                            summary=tmap.summary, concept_count=len(tmap.topics), estimated_shorts=est_shorts,
-                           estimated_duration=est_dur, uncertainties=[u.model_dump() for u in tmap.uncertainties])
+                           estimated_duration=est_dur, uncertainties=[u.model_dump() for u in tmap.uncertainties],
+                           brain=brain_used())
     except Exception as e:  # noqa: BLE001
         log.exception("analysis failed for %s", doc_id)
         db.update_document(doc_id, status="FAILED", error=str(e)[:800], progress="Failed")
@@ -168,6 +170,7 @@ def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[s
                         db.update_reel(reel_ids[(t["topic_id"], part)], status="FAILED", error=str(e)[:500])
                     continue
                 st.put_json(st.k_plan(doc_id, t["topic_id"]), plan.model_dump())
+                plan_brain = brain_used()
                 # reconcile reel rows with the number of parts the brain actually chose
                 planned = {p.part for p in plan.parts}
                 for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
@@ -182,6 +185,7 @@ def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[s
                                      "created_at": now_iso(), "ai_enhanced": ai_enhanced})
                         reel_ids[key] = rid
                     db.update_document(doc_id, progress=f"Rendering: {p.title}")
+                    db.update_reel(rid, brain=plan_brain)
                     try:
                         render_reel(doc_id, rid, plan, p)
                     except Exception as e:  # noqa: BLE001

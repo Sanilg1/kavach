@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from . import pipeline
 from . import storage as st
+from .brain.client import brain_status
 from .config import settings
 from .db import db, now_iso
 from .models import AskRequest, FeedbackRequest, GenerateRequest, RegenerateRequest, TopicUpdateRequest
@@ -64,7 +65,8 @@ def _public_reel(r: dict) -> dict:
 @app.get("/health")
 def health():
     return {"ok": True, "mode": settings.MODE, "storage": settings.STORAGE, "db": settings.DB,
-            "brain": settings.BRAIN, "tts": settings.TTS, "model": settings.BEDROCK_MODEL}
+            "brain": settings.BRAIN, "tts": settings.TTS, "model": settings.BEDROCK_MODEL,
+            "brain_status": brain_status()}
 
 
 # ---------------------------------------------------------------- documents

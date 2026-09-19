@@ -208,20 +208,88 @@ class BedrockConverseBrain:
         return "".join(parts), stop
 
 
+_QUOTA_MARKERS = ("too many tokens", "too many requests", "throttlingexception", "use case details",
+                  "not available for this account", "accessdeniedexception", "serviceunavailable")
+
+
+def _is_quota_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return any(m in msg for m in _QUOTA_MARKERS)
+
+
+class FallbackBrain:
+    """Bedrock first; if the account is quota-limited, answer with the offline brain
+    instead and remember it for a cooldown so the app stays responsive. As soon as
+    Bedrock answers again the site uses it - no redeploy needed."""
+
+    def __init__(self, primary, fallback, primary_name: str, cooldown: float):
+        import time
+
+        self._time = time
+        self.primary, self.fallback = primary, fallback
+        self.primary_name, self.fallback_name = primary_name, "offline"
+        self.cooldown = cooldown
+        self.blocked_until = 0.0
+        self.last_error = ""
+        self.last_used = primary_name
+
+    def complete_json(self, system: str, user: str, max_tokens: int | None = None, attachments=None) -> dict:
+        if self._time.time() >= self.blocked_until:
+            try:
+                out = self.primary.complete_json(system, user, max_tokens, attachments=attachments)
+                self.last_used = self.primary_name
+                self.last_error = ""
+                return out
+            except Exception as e:  # noqa: BLE001
+                if not _is_quota_error(e):
+                    raise
+                self.last_error = str(e)[:300]
+                self.blocked_until = self._time.time() + self.cooldown
+                log.warning("Bedrock unavailable (%s); using the offline brain for %.0f s", self.last_error[:120], self.cooldown)
+        self.last_used = self.fallback_name
+        return self.fallback.complete_json(system, user, max_tokens, attachments=attachments)
+
+    def status(self) -> dict:
+        blocked = self._time.time() < self.blocked_until
+        return {
+            "configured": self.primary_name,
+            "effective": self.fallback_name if blocked else self.primary_name,
+            "last_used": self.last_used,
+            "retry_in_s": max(0, int(self.blocked_until - self._time.time())) if blocked else 0,
+            "last_error": self.last_error,
+        }
+
+
 def _build():
-    kind = settings.BRAIN
-    if kind == "bedrock":
-        return BedrockMantleBrain()
-    if kind == "anthropic":
-        return BedrockMantleBrain(first_party=True)
-    if kind == "converse":
-        return BedrockConverseBrain()
     from .mock import MockBrain
 
-    return MockBrain()
+    kind = settings.BRAIN
+    if kind == "bedrock":
+        primary, name = BedrockMantleBrain(), f"bedrock:{settings.BEDROCK_MODEL}"
+    elif kind == "anthropic":
+        primary, name = BedrockMantleBrain(first_party=True), f"anthropic:{settings.ANTHROPIC_MODEL}"
+    elif kind == "converse":
+        primary, name = BedrockConverseBrain(), f"bedrock:{settings.BEDROCK_MODEL}"
+    else:
+        return MockBrain()
+    if settings.BRAIN_FALLBACK:
+        return FallbackBrain(primary, MockBrain(), name, settings.BRAIN_COOLDOWN)
+    return primary
 
 
 brain = _build()
+
+
+def brain_status() -> dict:
+    if isinstance(brain, FallbackBrain):
+        return brain.status()
+    name = "offline" if settings.BRAIN == "mock" else f"{settings.BRAIN}:{settings.BEDROCK_MODEL}"
+    return {"configured": name, "effective": name, "last_used": name, "retry_in_s": 0, "last_error": ""}
+
+
+def brain_used() -> str:
+    """Name of the brain that produced the most recent answer."""
+    return getattr(brain, "last_used", brain_status()["effective"])
 
 
 def complete_json_with_retry(system: str, user: str, max_tokens: int | None = None, attempts: int = 2,
