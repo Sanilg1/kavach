@@ -63,13 +63,24 @@ def encode_video(frames: Iterable[bytes], width: int, height: int, fps: int, aud
         "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart",
         str(out_path),
     ]
-    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    assert proc.stdin is not None
-    try:
-        for fr in frames:
-            proc.stdin.write(fr)
-    finally:
-        proc.stdin.close()
-        _, err = proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {err.decode(errors='ignore')[-2000:]}")
+    # stderr goes to a file and we wait() explicitly: communicate() would try to flush
+    # the stdin pipe we close ourselves, which raises on Linux once ffmpeg has finished.
+    err_path = out_path.with_suffix(".ffmpeg.log")
+    pipe_error: Exception | None = None
+    with open(err_path, "wb") as err_f:
+        proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err_f)
+        assert proc.stdin is not None
+        try:
+            for fr in frames:
+                proc.stdin.write(fr)
+        except (BrokenPipeError, OSError, ValueError) as e:  # ffmpeg died early; its log says why
+            pipe_error = e
+        try:
+            proc.stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+        rc = proc.wait()
+    err = err_path.read_bytes().decode(errors="ignore")[-2000:]
+    err_path.unlink(missing_ok=True)
+    if rc != 0 or pipe_error:
+        raise RuntimeError(f"ffmpeg failed (rc={rc}, {pipe_error!r}): {err}")

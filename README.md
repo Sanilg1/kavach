@@ -2,6 +2,9 @@
 
 > **Compress the delivery, not the knowledge.**
 
+**Live demo:** https://main.d1ex6vljuszbzw.amplifyapp.com · API: https://di1ubb11ugmj1.cloudfront.net/health
+(Amplify Hosting → CloudFront → EC2/Docker → S3 · DynamoDB · Polly · Bedrock, region ap-south-1)
+
 Kavach turns an educational PDF (≤ 60 pages) into a learning path of 30–60 second
 **whiteboard revision shorts** with AI narration, PDF source references, quick-check
 questions, follow-up Q&A and feedback-driven regeneration.
