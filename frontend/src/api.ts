@@ -97,7 +97,15 @@ export interface Reel {
   feedback?: string;
   regenerated?: number;
   ai_enhanced?: boolean;
+  language?: string;
 }
+
+export const LANGUAGES: { id: string; label: string; hint: string }[] = [
+  { id: "en", label: "English", hint: "Matthew" },
+  { id: "en-IN", label: "Indian English", hint: "Kajal" },
+  { id: "hinglish", label: "Hinglish", hint: "Hindi + English, Kajal" },
+  { id: "hi", label: "हिंदी", hint: "Kajal" },
+];
 
 export interface ReelsResponse {
   document_id: string;
@@ -144,7 +152,7 @@ export const api = {
   topics: (id: string) => req<TopicsResponse>(`/documents/${id}/topics`),
   updateTopics: (id: string, body: { selected_topic_ids: string[]; order: string[]; added_topics: { name: string; source_pages: number[] }[] }) =>
     req<TopicsResponse>(`/documents/${id}/topics`, json(body)),
-  generate: (id: string, ai_enhanced: boolean) => req<{ status: string }>(`/documents/${id}/generate`, json({ ai_enhanced })),
+  generate: (id: string, ai_enhanced: boolean, language = "en") => req<{ status: string }>(`/documents/${id}/generate`, json({ ai_enhanced, language })),
   reels: (id: string) => req<ReelsResponse>(`/documents/${id}/reels`),
   reel: (id: string) => req<Reel>(`/reels/${id}`),
   ask: (id: string, question: string, ai_enhanced: boolean) => req<Answer>(`/reels/${id}/ask`, json({ question, ai_enhanced })),

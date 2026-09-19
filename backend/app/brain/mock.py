@@ -133,8 +133,14 @@ class MockBrain:
         text = excerpt.group(1) if excerpt else ""
         text = re.sub(r"\[Page \d+\]", " ", text)
 
+        lang_line = re.search(r"NARRATION LANGUAGE: (.*)", user)
+        language = "en"
+        if lang_line and "Hinglish" in lang_line.group(1):
+            language = "hinglish"
+        elif lang_line and "Devanagari" in lang_line.group(1):
+            language = "hi"
         if re.search(r"handshake", name, re.I) and re.search(r"\bTCP\b", text or name):
-            return _tcp_demo_plan(name, tid, src, feedback)
+            return _tcp_demo_plan(name, tid, src, feedback, language)
 
         sents = _sentences(text)
         name_words = {w.lower() for w in re.findall(r"[A-Za-z]+", name)}
@@ -227,8 +233,40 @@ class MockBrain:
         }
 
 
-def _tcp_demo_plan(name: str, tid: str, src: list[int], feedback: bool) -> dict:
+_TCP_NARRATION = {
+    "hinglish": [
+        "TCP koi bhi application data bhejne se pehle, dono sides ko agree karna padta hai ki connection exist karta hai, aur byte stream kahan se start hogi.",
+        "TCP reliable aur ordered hai, isliye har side apna state rakhti hai: sequence numbers, buffers, aur window sizes. Yeh state pehla byte bhejne se pehle set up hona chahiye.",
+        "Sirf ek request kaafi nahi hai, kyunki client ko kabhi pata nahi chalega ki server ne use receive kiya ya nahi. Isliye TCP teen messages ka exchange use karta hai: the three-way handshake.",
+        "Ab handshake khud dekhte hain. Client sabse pehle ek SYN segment bhejta hai, jisme uska initial sequence number hota hai.",
+        "Server SYN-ACK se reply karta hai. Woh client ke sequence number ko acknowledge karta hai x plus one bhej kar, aur apna initial sequence number y bhi bhejta hai.",
+        "Aakhir mein client y plus one ke saath ek ACK bhejta hai. Ab dono sides ko pata hai ki doosri side alive hai aur starting numbers par agree ho chuki hai. Connection established.",
+        "Pattern yaad rakho: SYN, SYN-ACK, ACK. Teen messages, aur har side ne ek acknowledgement bheja bhi hai aur receive bhi kiya hai.",
+    ],
+    "hi": [
+        "TCP कोई भी application data भेजने से पहले, दोनों sides को यह मानना पड़ता है कि connection मौजूद है और byte stream कहाँ से शुरू होगी।",
+        "TCP reliable और ordered है, इसलिए हर side अपना state रखती है: sequence numbers, buffers और window sizes। यह state पहला byte भेजने से पहले तैयार होना चाहिए।",
+        "सिर्फ़ एक request काफ़ी नहीं है, क्योंकि client को कभी पता नहीं चलेगा कि server ने उसे receive किया या नहीं। इसलिए TCP तीन messages का exchange करता है: the three-way handshake।",
+        "अब handshake को देखते हैं। Client सबसे पहले एक SYN segment भेजता है, जिसमें उसका initial sequence number होता है।",
+        "Server SYN-ACK से जवाब देता है। वह x plus one भेजकर client के sequence number को acknowledge करता है, और अपना initial sequence number y भी भेजता है।",
+        "अंत में client y plus one के साथ एक ACK भेजता है। अब दोनों sides जानती हैं कि दूसरी side alive है और starting numbers पर सहमत है। Connection established।",
+        "Pattern याद रखिए: SYN, SYN-ACK, ACK। तीन messages, और हर side ने एक acknowledgement भेजा भी है और पाया भी है।",
+    ],
+}
+
+
+def _tcp_demo_plan(name: str, tid: str, src: list[int], feedback: bool, language: str = "en") -> dict:
     """A hand-written, high-quality plan for the spec's ideal demo concept."""
+    plan = _tcp_demo_plan_en(name, tid, src, feedback)
+    lines = _TCP_NARRATION.get(language)
+    if lines:
+        scenes = [sc for part in plan["parts"] for sc in part["scenes"]]
+        for sc, line in zip(scenes, lines):
+            sc["narration"] = line
+    return plan
+
+
+def _tcp_demo_plan_en(name: str, tid: str, src: list[int], feedback: bool) -> dict:
     slow = "Let's slow down and take this one message at a time. " if feedback else ""
     return {
         "topic": name,

@@ -176,7 +176,7 @@ with generation moved to a second Lambda / Step Functions.
 | GET | `/documents/{id}` | status (`UPLOADED…COMPLETED/FAILED`), suitability, estimates |
 | GET | `/documents/{id}/topics` | topic map + recommended learning order |
 | POST | `/documents/{id}/topics` | `{selected_topic_ids, order, added_topics}` |
-| POST | `/documents/{id}/generate` | `{ai_enhanced}` → shorts generated in background |
+| POST | `/documents/{id}/generate` | `{ai_enhanced, language: en\|en-IN\|hinglish\|hi}` → shorts generated in background |
 | GET | `/documents/{id}/reels` | reel feed with video URLs, sources, quick checks |
 | GET | `/reels/{reel_id}` | one reel |
 | POST | `/reels/{reel_id}/regenerate` | `{feedback: didnt_understand\|too_fast\|too_difficult\|explain_differently}` |
@@ -222,6 +222,9 @@ Shorts are portrait 9:16 (720x1280) by default; set `KAVACH_VIDEO_WIDTH/HEIGHT` 
 - **Combined lesson** (`POST /documents/{id}/combine`): all shorts stitched into one MP4.
 - **Revision notes** (`GET /documents/{id}/notes.md`): scripts, sources, AI-added context
   and quick checks as Markdown.
+- **Narration in English, Indian English, Hinglish or Hindi** (Amazon Polly's bilingual neural
+  voice Kajal for the Indian options); Claude writes the narration in the chosen language while
+  board text stays in English, and captions switch to a Devanagari font for Hindi.
 - Progress bar burned into every short; `backend/.env` is loaded automatically.
 
 ## What we learned (First Commit, 17–20 Sep 2026)

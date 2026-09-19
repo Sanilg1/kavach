@@ -12,7 +12,7 @@ from ..config import BACKEND_DIR, settings
 
 _CANDIDATES = [
     settings.FONT_PATH,
-    *[str(p) for p in sorted((BACKEND_DIR / "assets" / "fonts").glob("*.ttf"))],
+    str(BACKEND_DIR / "assets" / "fonts" / "PatrickHand-Regular.ttf"),
     r"C:\Windows\Fonts\segoepr.ttf",      # Segoe Print
     r"C:\Windows\Fonts\segoesc.ttf",      # Segoe Script
     r"C:\Windows\Fonts\comic.ttf",
@@ -29,6 +29,29 @@ def font_path() -> str | None:
         if c and os.path.exists(c):
             return c
     return None
+
+
+_DEVANAGARI = str(BACKEND_DIR / "assets" / "fonts" / "NotoSansDevanagari-Regular.ttf")
+
+
+def script_of(text: str) -> str:
+    """'devanagari' if the text contains Devanagari characters, else 'latin'."""
+    return "devanagari" if any("\u0900" <= ch <= "\u097f" for ch in text or "") else "latin"
+
+
+@lru_cache(maxsize=64)
+def _devanagari_font(size: int):
+    if os.path.exists(_DEVANAGARI):
+        try:
+            return ImageFont.truetype(_DEVANAGARI, size=size)
+        except Exception:
+            pass
+    return get_font(size)
+
+
+def font_for(size: int, text: str = ""):
+    """Font for a piece of text: the handwriting font for Latin, Noto for Devanagari."""
+    return _devanagari_font(size) if script_of(text) == "devanagari" else get_font(size)
 
 
 @lru_cache(maxsize=64)

@@ -2027,3 +2027,16 @@ details summary {
   color: var(--red);
   max-width: 160px;
 }
+
+
+/* ---------- narration language ---------- */
+.toggle.lang select {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  max-width: 100%;
+}

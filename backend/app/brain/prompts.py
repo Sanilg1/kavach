@@ -162,6 +162,23 @@ OUTPUT JSON SCHEMA:
 }"""
 
 
+LANGUAGE_INSTRUCTIONS = {
+    "en": "",
+    "en-IN": "Write the narration in Indian English; where natural, use examples familiar to students in India.",
+    "hinglish": (
+        "Write the NARRATION in Hinglish: conversational Hindi written in Latin script, mixed with English "
+        "technical terms exactly as a good Indian tutor speaks (e.g. 'TCP data bhejne se pehle, dono sides ko "
+        "connection par agree karna padta hai'). Keep every on-board TEXT/label/title in English. The quick check "
+        "question and options may be in Hinglish; keep technical terms in English."
+    ),
+    "hi": (
+        "Write the NARRATION in Hindi (Devanagari script), keeping technical terms and acronyms in Latin script "
+        "(TCP, SYN, DNS). Titles may be in Hindi; keep other on-board labels short and in English. The quick check "
+        "question and options should be in Hindi."
+    ),
+}
+
+
 FEEDBACK_ADJUSTMENTS = {
     "didnt_understand": (
         "The student did NOT understand the previous version. Rebuild the explanation from "
@@ -224,6 +241,7 @@ def plan_user(
     feedback: str | None = None,
     previous_plan: dict | None = None,
     image_pages: list[int] | None = None,
+    language: str = "en",
 ) -> str:
     siblings = [
         f"{t.get('learning_order', 0)}. {t['name']} (id={t['topic_id']})"
@@ -240,6 +258,8 @@ def plan_user(
         f"Source pages: {topic.get('source_pages', [])}",
         f"Mode: {'AI-ENHANCED (you may add general knowledge, list it in ai_added_context)' if ai_enhanced else 'DEFAULT (PDF only; ai_added_context must be empty)'}",
     ]
+    if LANGUAGE_INSTRUCTIONS.get(language):
+        parts += ["", "NARRATION LANGUAGE: " + LANGUAGE_INSTRUCTIONS[language]]
     if image_pages:
         parts += ["", f"Images of PDF pages {image_pages} are attached in that order. Use them to read any "
                       "diagrams, tables or equations the text lost; re-draw important figures with the "
@@ -258,9 +278,11 @@ def plan_user(
     return "\n".join(parts)
 
 
-def ask_user(question: str, lesson_script: str, context_text: str, ai_enhanced: bool, sources: list[int]) -> str:
+def ask_user(question: str, lesson_script: str, context_text: str, ai_enhanced: bool, sources: list[int],
+             language: str = "en") -> str:
     return "\n".join([
         f"Mode: {'AI-ENHANCED' if ai_enhanced else 'DEFAULT (PDF only)'}",
+        ("Answer language: " + LANGUAGE_INSTRUCTIONS[language].replace("NARRATION", "answer")) if LANGUAGE_INSTRUCTIONS.get(language) else "Answer in English.",
         f"Lesson sources: pages {sources}",
         "",
         "=== LESSON SCRIPT ===",

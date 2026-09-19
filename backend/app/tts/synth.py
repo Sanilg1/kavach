@@ -25,6 +25,21 @@ log = logging.getLogger("kavach.tts")
 
 _POLLY_MAX_CHARS = 2800
 
+# narration language -> (Polly voice, language code). Kajal is neural and bilingual (en-IN / hi-IN).
+LANGUAGES = {
+    "en": {"label": "English", "voice": "Matthew", "code": "en-US"},
+    "en-IN": {"label": "Indian English", "voice": "Kajal", "code": "en-IN"},
+    "hinglish": {"label": "Hinglish", "voice": "Kajal", "code": "en-IN"},
+    "hi": {"label": "हिंदी", "voice": "Kajal", "code": "hi-IN"},
+}
+
+
+def voice_for(language: str | None) -> tuple[str, str]:
+    lang = LANGUAGES.get(language or "en", LANGUAGES["en"])
+    if (language or "en") == "en":
+        return settings.POLLY_VOICE, "en-US"
+    return lang["voice"], lang["code"]
+
 
 @dataclass
 class Narration:
@@ -73,22 +88,23 @@ class PollyTTS:
 
         self.client = boto3.client("polly", region_name=settings.AWS_REGION)
 
-    def _speech(self, text: str, **kw):
+    def _speech(self, text: str, language: str | None = None, **kw):
+        voice, code = voice_for(language)
         return self.client.synthesize_speech(
-            Text=text, VoiceId=settings.POLLY_VOICE, Engine=settings.POLLY_ENGINE, LanguageCode="en-US", **kw
+            Text=text, VoiceId=voice, Engine=settings.POLLY_ENGINE, LanguageCode=code, **kw
         )
 
-    def synthesize(self, text: str, out_mp3: Path) -> Narration:
+    def synthesize(self, text: str, out_mp3: Path, language: str | None = None) -> Narration:
         out_mp3.parent.mkdir(parents=True, exist_ok=True)
         words: list[tuple[float, str]] = []
         offset = 0.0
         chunks = _split_for_polly(text)
         with open(out_mp3, "wb") as f:
             for i, chunk in enumerate(chunks):
-                audio = self._speech(chunk, OutputFormat="mp3")["AudioStream"].read()
+                audio = self._speech(chunk, language, OutputFormat="mp3")["AudioStream"].read()
                 f.write(audio)
                 try:
-                    marks = self._speech(chunk, OutputFormat="json", SpeechMarkTypes=["word"])["AudioStream"].read()
+                    marks = self._speech(chunk, language, OutputFormat="json", SpeechMarkTypes=["word"])["AudioStream"].read()
                     raw = chunk.encode("utf-8")
                     for line in marks.decode("utf-8").splitlines():
                         if not line.strip():
@@ -127,7 +143,7 @@ class SapiTTS:
         self.synthesize("Kavach", probe)
         probe.unlink(missing_ok=True)
 
-    def synthesize(self, text: str, out_mp3: Path) -> Narration:
+    def synthesize(self, text: str, out_mp3: Path, language: str | None = None) -> Narration:
         out_mp3.parent.mkdir(parents=True, exist_ok=True)
         wav = out_mp3.with_suffix(".wav")
         txt = out_mp3.with_suffix(".txt")
@@ -150,7 +166,7 @@ class SapiTTS:
 
 
 class MockTTS:
-    def synthesize(self, text: str, out_mp3: Path) -> Narration:
+    def synthesize(self, text: str, out_mp3: Path, language: str | None = None) -> Narration:
         out_mp3.parent.mkdir(parents=True, exist_ok=True)
         dur = estimate_seconds(text)
         subprocess.run([ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",

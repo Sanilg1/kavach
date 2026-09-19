@@ -18,7 +18,7 @@ from typing import Callable, Iterator, Optional
 from PIL import Image, ImageDraw
 
 from ..models import Element, PlanPart
-from .fonts import get_font
+from .fonts import font_for, get_font
 
 BG = (255, 255, 253)
 COLORS = {
@@ -219,7 +219,7 @@ class Renderer:
         return (self.px(x), self.py(y))
 
     def _measure_text(self, el: Element, center100: Point, max_w100: Optional[float] = None) -> BBox:
-        font = get_font(self.font_px(el.size))
+        font = font_for(self.font_px(el.size), el.text)
         lines = self._wrap(el.text, font, self.px(max_w100 or el.w or 86))
         lh = font.size * 1.25
         w = max((font.getlength(l) for l in lines), default=0)
@@ -360,7 +360,7 @@ class Renderer:
 
     def _text_lines(self, draw, el_size: str, text: str, center: Point, color, reveal: float = 1.0,
                     max_w: Optional[float] = None, anchor_top: bool = False) -> BBox:
-        font = get_font(self.font_px(el_size))
+        font = font_for(self.font_px(el_size), text)
         lines = self._wrap(text, font, max_w or self.px(86))
         lh = font.size * 1.25
         total_chars = sum(len(l) for l in lines) or 1
@@ -381,7 +381,7 @@ class Renderer:
         return (center[0] - maxw / 2, center[1] - h / 2, center[0] + maxw / 2, center[1] + h / 2)
 
     def _label_bg(self, draw, text: str, center: Point, size: str, color, pad: float = 5) -> None:
-        font = get_font(self.font_px(size))
+        font = font_for(self.font_px(size), text)
         w = font.getlength(text)
         h = font.size * 1.1
         draw.rounded_rectangle([center[0] - w / 2 - pad, center[1] - h / 2 - 2, center[0] + w / 2 + pad, center[1] + h / 2 + 2],
@@ -582,7 +582,7 @@ class Renderer:
         font_small = self.font_px("small")
         for i, n in enumerate(nodes):
             label = str(n.get("label", n.get("id", "")))
-            nw = max(self.px(11), get_font(font_small).getlength(label) + 24 * self.s)
+            nw = max(self.px(11), font_for(font_small, label).getlength(label) + 24 * self.s)
             nh = self.px(6.5)
             x, y = self.px(float(n["x"])), self.py(float(n["y"]))
             b = (x - nw / 2, y - nh / 2, x + nw / 2, y + nh / 2)
@@ -670,7 +670,7 @@ class Renderer:
         if not cap:
             return
         draw = ImageDraw.Draw(img)
-        font = get_font(self.font_px("normal"))
+        font = font_for(self.font_px("normal"), " ".join(w for _, w in cap.words))
         space = font.getlength(" ")
         max_w = self.W * 0.86
         lines: list[list[tuple[float, str]]] = [[]]

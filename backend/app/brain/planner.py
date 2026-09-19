@@ -234,6 +234,7 @@ def build_teaching_plan(
     feedback: Optional[str] = None,
     previous_plan: Optional[dict] = None,
     pdf_path: Optional[Path] = None,
+    language: str = "en",
 ) -> TeachingPlan:
     pages = topic.get("source_pages") or [1]
     context = ex.text_for_pages(pages, pad=1, max_chars=60000)
@@ -243,19 +244,19 @@ def build_teaching_plan(
     raw = complete_json_with_retry(
         prompts.PLAN_SYSTEM,
         prompts.plan_user(topic, topic_map, context, ai_enhanced, feedback, previous_plan,
-                          image_pages=[a["page"] for a in attachments]),
+                          image_pages=[a["page"] for a in attachments], language=language),
         attachments=attachments,
     )
     return normalise_plan(raw, topic, ex.page_count)
 
 
 # ------------------------------------------------------------------ follow-up Q&A
-def answer_question(question: str, part: dict, ex: ExtractedDoc, ai_enhanced: bool) -> dict:
+def answer_question(question: str, part: dict, ex: ExtractedDoc, ai_enhanced: bool, language: str = "en") -> dict:
     sources = part.get("sources") or [1]
     context = ex.text_for_pages(sources, pad=2, max_chars=50000)
     raw = complete_json_with_retry(
         prompts.ASK_SYSTEM,
-        prompts.ask_user(question, part.get("script", ""), context, ai_enhanced, sources),
+        prompts.ask_user(question, part.get("script", ""), context, ai_enhanced, sources, language=language),
         max_tokens=4000,
     )
     return {

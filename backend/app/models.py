@@ -142,9 +142,13 @@ class TopicUpdateRequest(BaseModel):
     added_topics: list[dict[str, Any]] = []     # {"name": "...", "source_pages": [..]}
 
 
+Language = Literal["en", "en-IN", "hinglish", "hi"]
+
+
 class GenerateRequest(BaseModel):
     ai_enhanced: bool = False
     topic_ids: Optional[list[str]] = None       # default: all selected topics
+    language: Language = "en"                   # narration language / voice
 
 
 class AskRequest(BaseModel):

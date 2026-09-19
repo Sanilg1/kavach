@@ -26,7 +26,7 @@ question to check themselves — from *their* material, in minutes.
 3. The student adds/removes/reorders topics.
 4. For each topic the Brain writes a **teaching plan JSON**: scenes with narration and
    whiteboard primitives (boxes, arrows, flows, tables, diagrams, equations, highlights).
-5. Code renders it: Amazon Polly narration with word-level speech marks → synced captions,
+5. Code renders it: Amazon Polly narration (English, Indian English, Hinglish or Hindi — Kajal) with word-level speech marks → synced captions,
    Pillow hand-drawn whiteboard frames, FFmpeg → 9:16 MP4 in S3.
 6. A shorts feed: video, PDF source pages, "AI-added context" clearly separated, quick check,
    follow-up questions, 👍/🤔/🐢/🧠/🔄 feedback that regenerates the short, a combined full

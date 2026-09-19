@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, fmtDuration, fmtPages, Topic, TopicsResponse } from "../api";
+import { api, fmtDuration, fmtPages, LANGUAGES, Topic, TopicsResponse } from "../api";
 
 interface Props {
   docId: string;
@@ -12,6 +12,7 @@ export default function TopicMap({ docId, onGenerate }: Props) {
   const [newName, setNewName] = useState("");
   const [newPages, setNewPages] = useState("");
   const [aiEnhanced, setAiEnhanced] = useState(false);
+  const [language, setLanguage] = useState("en");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,7 +84,7 @@ export default function TopicMap({ docId, onGenerate }: Props) {
         order: kept.map((t) => t.topic_id),
         added_topics: added,
       });
-      await api.generate(docId, aiEnhanced);
+      await api.generate(docId, aiEnhanced, language);
       onGenerate();
     } catch (e) {
       setError((e as Error).message);
@@ -180,6 +181,16 @@ export default function TopicMap({ docId, onGenerate }: Props) {
           <span>
             AI-enhanced mode <span className="muted small">(adds general knowledge, clearly marked)</span>
           </span>
+        </label>
+        <label className="toggle lang">
+          <span>Narration</span>
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Narration language">
+            {LANGUAGES.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label} · {l.hint}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       {error && <div className="error">{error}</div>}

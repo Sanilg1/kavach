@@ -119,12 +119,12 @@ def apply_topic_update(doc_id: str, selected_ids: list[str], order: list[str], a
 
 
 # ---------------------------------------------------------------- 3. generate
-def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[str]] = None) -> None:
+def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[str]] = None, language: str = "en") -> None:
     doc = db.get_document(doc_id)
     if not doc:
         return
     try:
-        db.update_document(doc_id, status="GENERATING", progress="Planning lessons")
+        db.update_document(doc_id, status="GENERATING", progress="Planning lessons", language=language)
         ex = _load_doc(doc_id)
         tmap = st.get_json(st.k_topic_map(doc_id))
         topics = [t for t in db.list_topics(doc_id) if t.get("selected")]
@@ -144,7 +144,7 @@ def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[s
                 db.put_reel({
                     "reel_id": rid, "document_id": doc_id, "topic_id": t["topic_id"], "topic_name": t["name"],
                     "learning_order": t.get("learning_order", 0), "part": part, "title": f"{t['name']} - part {part}",
-                    "status": "PENDING", "created_at": now_iso(), "ai_enhanced": ai_enhanced,
+                    "status": "PENDING", "created_at": now_iso(), "ai_enhanced": ai_enhanced, "language": language,
                 })
 
         failures = 0
@@ -153,7 +153,7 @@ def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[s
         def plan_topic(t: dict):
             for part in range(1, int(t.get("estimated_shorts", 1)) + 1):
                 db.update_reel(reel_ids[(t["topic_id"], part)], status="PLANNING")
-            return planner.build_teaching_plan(t, tmap, ex, ai_enhanced=ai_enhanced, pdf_path=pdf_path)
+            return planner.build_teaching_plan(t, tmap, ex, ai_enhanced=ai_enhanced, pdf_path=pdf_path, language=language)
 
         # Plan several topics concurrently (Bedrock latency dominates) while earlier
         # topics render in learning order on this thread.
@@ -182,7 +182,7 @@ def generate_document(doc_id: str, ai_enhanced: bool, topic_ids: Optional[list[s
                     if key not in reel_ids:
                         db.put_reel({"reel_id": rid, "document_id": doc_id, "topic_id": t["topic_id"], "topic_name": t["name"],
                                      "learning_order": t.get("learning_order", 0), "part": p.part, "status": "PENDING",
-                                     "created_at": now_iso(), "ai_enhanced": ai_enhanced})
+                                     "created_at": now_iso(), "ai_enhanced": ai_enhanced, "language": language})
                         reel_ids[key] = rid
                     db.update_document(doc_id, progress=f"Rendering: {p.title}")
                     db.update_reel(rid, brain=plan_brain)
@@ -213,12 +213,13 @@ def render_reel(doc_id: str, reel_id: str, plan: TeachingPlan, part: PlanPart) -
                    quick_check=(part.quick_check or plan.quick_check).model_dump() if (part.quick_check or plan.quick_check) else None,
                    script=part.script, visual_plan=part.visual_plan)
     t_start = time.time()
+    language = (db.get_reel(reel_id) or {}).get("language") or (db.get_document(doc_id) or {}).get("language") or "en"
     segments: list[tuple[Path, float]] = []
     scene_durations: list[float] = []
     scene_words: list[list[tuple[float, str]]] = []
     for i, scene in enumerate(part.scenes):
         mp3 = work / f"scene_{i + 1}.mp3"
-        narration = tts.synthesize(scene.narration, mp3)
+        narration = tts.synthesize(scene.narration, mp3, language=language)
         pad = max(0.7, 3.0 - narration.duration)   # breathing room after each scene
         segments.append((mp3, pad))
         scene_durations.append(narration.duration + pad)
@@ -274,7 +275,8 @@ def regenerate_reel(reel_id: str, feedback: str, ai_enhanced: bool) -> None:
             previous = {"parts": [prev_part]} if prev_part else previous
         topic["description"] = f"{topic.get('description', '')} Focus only on: {reel.get('title', '')}".strip()
         plan = planner.build_teaching_plan(topic, tmap, ex, ai_enhanced=ai_enhanced, feedback=feedback, previous_plan=previous,
-                                           pdf_path=st.storage.local_path(st.k_upload(doc_id)))
+                                           pdf_path=st.storage.local_path(st.k_upload(doc_id)),
+                                           language=reel.get("language") or (db.get_document(doc_id) or {}).get("language") or "en")
         want = int(reel.get("part", 1))
         part = next((p for p in plan.parts if p.part == want), plan.parts[0])
         part.part = want
@@ -295,7 +297,8 @@ def ask(reel_id: str, question: str, ai_enhanced: bool) -> dict:
     if not reel:
         raise ValueError("Reel not found")
     ex = _load_doc(reel["document_id"])
-    return planner.answer_question(question, reel, ex, ai_enhanced)
+    language = reel.get("language") or (db.get_document(reel["document_id"]) or {}).get("language") or "en"
+    return planner.answer_question(question, reel, ex, ai_enhanced, language=language)
 
 
 # ---------------------------------------------------------------- 7. combined lesson (spec §21)

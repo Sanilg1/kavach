@@ -84,6 +84,13 @@ def _public_reel(r: dict) -> dict:
     return r
 
 
+@app.get("/languages")
+def languages():
+    from .tts.synth import LANGUAGES
+
+    return [{"id": k, "label": v["label"], "voice": v["voice"]} for k, v in LANGUAGES.items()]
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "mode": settings.MODE, "storage": settings.STORAGE, "db": settings.DB,
@@ -182,8 +189,8 @@ def generate(doc_id: str, body: GenerateRequest | None = None):
         raise HTTPException(409, "Generation already in progress")
     if not any(t.get("selected") for t in db.list_topics(doc_id)):
         raise HTTPException(400, "Select at least one topic")
-    db.update_document(doc_id, status="GENERATING", progress="Queued", ai_enhanced=body.ai_enhanced)
-    worker.submit(pipeline.generate_document, doc_id, body.ai_enhanced, body.topic_ids)
+    db.update_document(doc_id, status="GENERATING", progress="Queued", ai_enhanced=body.ai_enhanced, language=body.language)
+    worker.submit(pipeline.generate_document, doc_id, body.ai_enhanced, body.topic_ids, body.language)
     return {"document_id": doc_id, "status": "GENERATING"}
 
 
