@@ -65,6 +65,8 @@ def build_topic_map(ex: ExtractedDoc, pdf_path: Optional[Path] = None) -> TopicM
                                pdf_attached=bool(attachments)),
         attachments=attachments,
     )
+    if isinstance(raw, list):  # topics array without the wrapper object
+        raw = {"topics": raw}
     topics: list[Topic] = []
     seen: set[str] = set()
     for i, t in enumerate(raw.get("topics") or []):
@@ -94,6 +96,7 @@ def build_topic_map(ex: ExtractedDoc, pdf_path: Optional[Path] = None) -> TopicM
     for i, t in enumerate(topics):
         t.learning_order = i + 1
     return TopicMap(
+        brain=str(raw.get("_brain") or ""),
         title=(clean_title(raw.get("title")) or ex.title_guess or "Your document")[:120],
         summary=str(raw.get("summary") or ""),
         topics=topics,
@@ -189,6 +192,10 @@ def _norm_quick_check(raw) -> Optional[QuickCheck]:
 
 
 def normalise_plan(raw: dict, topic: dict, page_count: int) -> TeachingPlan:
+    if isinstance(raw, list):  # some models answer with the parts array itself
+        raw = {"parts": raw}
+    if isinstance(raw.get("plan"), dict):
+        raw = {**raw["plan"], "_brain": raw.get("_brain", "")}
     parts: list[PlanPart] = []
     for i, p in enumerate(raw.get("parts") or []):
         if not isinstance(p, dict):
@@ -221,6 +228,7 @@ def normalise_plan(raw: dict, topic: dict, page_count: int) -> TeachingPlan:
         if p.quick_check is None:
             p.quick_check = top_qc
     return TeachingPlan(
+        brain=str(raw.get("_brain") or ""),
         topic=str(raw.get("topic") or topic["name"]),
         topic_id=topic["topic_id"],
         learning_order=int(topic.get("learning_order") or 0),

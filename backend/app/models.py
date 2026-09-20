@@ -54,6 +54,7 @@ class Uncertainty(BaseModel):
 
 
 class TopicMap(BaseModel):
+    brain: str = ""                        # which brain produced it (bedrock:…, groq:…, offline)
     title: str
     summary: str = ""
     topics: list[Topic]
@@ -128,6 +129,7 @@ class PlanPart(BaseModel):
 
 
 class TeachingPlan(BaseModel):
+    brain: str = ""
     topic: str
     topic_id: str = ""
     learning_order: int = 0
