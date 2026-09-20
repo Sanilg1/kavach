@@ -65,14 +65,20 @@ def _recover_interrupted_jobs() -> None:
         log.exception("startup recovery failed")
 
 
-def _media_url(key: str | None) -> str | None:
-    return st.storage.url(key) if key else None
+def _media_url(key: str | None, download_as: str | None = None) -> str | None:
+    return st.storage.url(key, download_as) if key else None
+
+
+def _safe_name(s: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in " -_" else "" for ch in (s or "")).strip()[:60] or "kavach"
 
 
 def _public_doc(doc: dict) -> dict:
     d = dict(doc)
     d.pop("error_trace", None)
     d["combined_url"] = _media_url(d.get("combined_video_key")) if d.get("combined_status") == "COMPLETED" else None
+    d["combined_download_url"] = (_media_url(d.get("combined_video_key"), f"{_safe_name(d.get('title', ''))} - full lesson.mp4")
+                                  if d.get("combined_status") == "COMPLETED" else None)
     return d
 
 
@@ -80,6 +86,8 @@ def _public_reel(r: dict) -> dict:
     r = dict(r)
     r["video_url"] = _media_url(r.get("video_s3_key")) if r.get("status") == "COMPLETED" else None
     r["thumb_url"] = _media_url(r.get("thumb_s3_key")) if r.get("status") == "COMPLETED" else None
+    r["download_url"] = (_media_url(r.get("video_s3_key"), f"{_safe_name(r.get('title', ''))}.mp4")
+                         if r.get("status") == "COMPLETED" else None)
     r["sources_label"] = pipeline._fmt_pages(r.get("sources") or [])
     return r
 
@@ -291,13 +299,13 @@ def get_plan(reel_id: str):
 
 # ---------------------------------------------------------------- media (local storage mode)
 @app.get("/media/{key:path}")
-def media(key: str):
+def media(key: str, download: str | None = None):
     if settings.STORAGE != "local":
-        return JSONResponse({"url": st.storage.url(key)})
+        return JSONResponse({"url": st.storage.url(key, download)})
     p: Path = st.storage.local_path(key)
     if not p.exists() or ".." in key:
         raise HTTPException(404, "Not found")
-    return FileResponse(p)
+    return FileResponse(p, filename=download) if download else FileResponse(p)
 
 
 # AWS Lambda entry point (container image or zip with Mangum)

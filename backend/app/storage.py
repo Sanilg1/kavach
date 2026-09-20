@@ -15,6 +15,7 @@ import json
 import mimetypes
 import shutil
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any, Optional
 
 from .config import settings
@@ -52,8 +53,9 @@ class LocalStorage:
     def local_path(self, key: str) -> Path:
         return self._path(key)
 
-    def url(self, key: str) -> str:
-        return f"{settings.PUBLIC_BASE_URL}/media/{key}"
+    def url(self, key: str, download_as: Optional[str] = None) -> str:
+        base = f"{settings.PUBLIC_BASE_URL}/media/{key}"
+        return f"{base}?download={quote(download_as)}" if download_as else base
 
 
 class S3Storage:
@@ -99,10 +101,11 @@ class S3Storage:
             self.get_to_file(key, p)
         return p
 
-    def url(self, key: str) -> str:
-        return self.client.generate_presigned_url(
-            "get_object", Params={"Bucket": self.bucket, "Key": self._k(key)}, ExpiresIn=6 * 3600
-        )
+    def url(self, key: str, download_as: Optional[str] = None) -> str:
+        params = {"Bucket": self.bucket, "Key": self._k(key)}
+        if download_as:  # S3 sets Content-Disposition so the browser saves instead of playing
+            params["ResponseContentDisposition"] = f'attachment; filename="{download_as}"'
+        return self.client.generate_presigned_url("get_object", Params=params, ExpiresIn=6 * 3600)
 
 
 def _build():

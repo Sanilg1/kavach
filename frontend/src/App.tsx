@@ -4,6 +4,7 @@ import Analysis from "./components/Analysis";
 import ReelFeed from "./components/ReelFeed";
 import TopicMap from "./components/TopicMap";
 import Upload from "./components/Upload";
+import { rememberDoc } from "./library";
 
 type Screen = "upload" | "analysis" | "topics" | "feed";
 
@@ -32,6 +33,7 @@ export default function App() {
     try {
       const d = await api.doc(docId);
       setDoc(d);
+      rememberDoc(d);
       return d;
     } catch {
       return null;

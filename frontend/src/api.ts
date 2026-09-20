@@ -37,6 +37,7 @@ export interface Doc {
   reels_failed?: number;
   combined_status?: "BUILDING" | "COMPLETED" | "FAILED";
   combined_url?: string | null;
+  combined_download_url?: string | null;
   combined_duration?: number;
   combined_error?: string;
   brain?: string;
@@ -93,6 +94,7 @@ export interface Reel {
   script?: string;
   video_url?: string | null;
   thumb_url?: string | null;
+  download_url?: string | null;
   error?: string;
   feedback?: string;
   regenerated?: number;

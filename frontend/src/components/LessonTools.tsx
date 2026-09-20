@@ -3,17 +3,18 @@ import { api, Doc, fmtDuration } from "../api";
 
 /** "Full lesson" (all shorts stitched into one MP4) and "Notes" (markdown export). */
 export default function LessonTools({ doc, ready, variant }: { doc: Doc; ready: boolean; variant: "bar" | "rail" }) {
-  const [combined, setCombined] = useState<{ status?: string; url?: string | null; duration?: number }>({
+  const [combined, setCombined] = useState<{ status?: string; url?: string | null; download?: string | null; duration?: number }>({
     status: doc.combined_status,
     url: doc.combined_url,
+    download: doc.combined_download_url,
     duration: doc.combined_duration,
   });
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
-    setCombined({ status: doc.combined_status, url: doc.combined_url, duration: doc.combined_duration });
-  }, [doc.combined_status, doc.combined_url, doc.combined_duration]);
+    setCombined({ status: doc.combined_status, url: doc.combined_url, download: doc.combined_download_url, duration: doc.combined_duration });
+  }, [doc.combined_status, doc.combined_url, doc.combined_download_url, doc.combined_duration]);
 
   // poll while the combined lesson is being stitched
   useEffect(() => {
@@ -23,7 +24,7 @@ export default function LessonTools({ doc, ready, variant }: { doc: Doc; ready: 
       try {
         const d = await api.doc(doc.document_id);
         if (!alive) return;
-        setCombined({ status: d.combined_status, url: d.combined_url, duration: d.combined_duration });
+        setCombined({ status: d.combined_status, url: d.combined_url, download: d.combined_download_url, duration: d.combined_duration });
         if (d.combined_status === "BUILDING") timer.current = window.setTimeout(tick, 2500);
       } catch {
         if (alive) timer.current = window.setTimeout(tick, 4000);
@@ -59,6 +60,11 @@ export default function LessonTools({ doc, ready, variant }: { doc: Doc; ready: 
         <button type="button" className="tool" onClick={build} disabled={!ready || building} title="Stitch all shorts into one lesson video">
           {building ? "Building…" : variant === "bar" ? "Lesson" : "Full lesson"}
         </button>
+      )}
+      {combined.status === "COMPLETED" && combined.download && (
+        <a className="tool" href={combined.download} download title="Download the full lesson as MP4">
+          {variant === "bar" ? "↓ MP4" : "↓ Lesson MP4"}
+        </a>
       )}
       <a className="tool" href={api.notesUrl(doc.document_id)} download title="Download revision notes (Markdown)">
         {variant === "bar" ? "Notes" : "Notes ↓"}

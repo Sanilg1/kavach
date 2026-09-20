@@ -422,6 +422,11 @@ export default function ReelCard({
                   <strong>Sources</strong> · PDF — {pages}
                 </div>
               )}
+              {done && reel.download_url && (
+                <a className="btn ghost sm download-link" href={reel.download_url} download>
+                  ↓ Save this short (MP4)
+                </a>
+              )}
               {reel.ai_added_context && reel.ai_added_context.length > 0 && (
                 <div className="ai-added">
                   <strong>AI-added context</strong> (not in your PDF)
