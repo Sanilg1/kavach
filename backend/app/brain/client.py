@@ -130,6 +130,49 @@ class BedrockMantleBrain:
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
 
 
+class GroqBrain:
+    """OpenAI-compatible chat completions on Groq (stopgap while Bedrock is quota-limited).
+    Text-only: attachments are dropped. JSON mode keeps the plan contract intact."""
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.model = settings.GROQ_MODEL
+        self.url = "https://api.groq.com/openai/v1/chat/completions"
+
+    def complete_json(self, system: str, user: str, max_tokens: int | None = None,
+                      attachments: list[Attachment] | None = None) -> dict:
+        import urllib.error
+        import urllib.request
+
+        if attachments:
+            user += "\n\n(Attachments were omitted for this model - rely on the extracted text.)"
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "temperature": 0.4,
+            "max_completion_tokens": min(max_tokens or settings.BRAIN_MAX_TOKENS, 32000),
+            "response_format": {"type": "json_object"},
+        }
+        req = urllib.request.Request(
+            self.url, data=json.dumps(body).encode("utf-8"), method="POST",
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "User-Agent": "kavach/0.1"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=600) as r:
+                data = json.load(r)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "ignore")[:400]
+            raise BrainError(f"Groq error {e.code}: {detail}") from e
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise BrainError(f"Groq connection error: {e}") from e
+        choice = (data.get("choices") or [{}])[0]
+        if choice.get("finish_reason") == "length":
+            raise BrainError("The model output was truncated (max_tokens).")
+        usage = data.get("usage", {})
+        log.info("groq usage in=%s out=%s", usage.get("prompt_tokens"), usage.get("completion_tokens"))
+        return _extract_json(choice.get("message", {}).get("content") or "")
+
+
 class BedrockConverseBrain:
     """Amazon Bedrock Converse API (boto3). Works with inference-profile ids such as
     global.anthropic.claude-opus-4-6-v1 and streams so long teaching plans do not hit
@@ -208,7 +251,8 @@ class BedrockConverseBrain:
         return "".join(parts), stop
 
 
-_QUOTA_MARKERS = ("too many tokens", "too many requests", "throttlingexception", "use case details",
+_QUOTA_MARKERS = ("too many tokens", "too many requests", "throttlingexception", "use case details", "groq error 429",
+                  "groq error 401", "groq error 403", "groq connection error",
                   "not available for this account", "accessdeniedexception", "serviceunavailable",
                   "rate_limit", "overloaded", "credit balance", "authentication_error", "invalid x-api-key",
                   "permission_error", "billing")
@@ -279,10 +323,14 @@ def _build():
     mock.name = "offline"
     if kind == "mock":
         return mock
-    # optional middle tier: the first-party Claude API, used while Bedrock is quota-limited
+    # optional middle tiers, used while Bedrock is quota-limited: Anthropic API, then Groq
     tail = mock
+    if kind != "groq" and os.environ.get("GROQ_API_KEY") and settings.BRAIN_FALLBACK:
+        tail = FallbackBrain(GroqBrain(os.environ["GROQ_API_KEY"]), tail, f"groq:{settings.GROQ_MODEL}", settings.BRAIN_COOLDOWN)
     if kind != "anthropic" and os.environ.get("ANTHROPIC_API_KEY") and settings.BRAIN_FALLBACK:
-        tail = FallbackBrain(BedrockMantleBrain(first_party=True), mock, f"anthropic:{settings.ANTHROPIC_MODEL}", settings.BRAIN_COOLDOWN)
+        tail = FallbackBrain(BedrockMantleBrain(first_party=True), tail, f"anthropic:{settings.ANTHROPIC_MODEL}", settings.BRAIN_COOLDOWN)
+    if kind == "groq":
+        return FallbackBrain(GroqBrain(os.environ.get("GROQ_API_KEY", "")), mock, f"groq:{settings.GROQ_MODEL}", settings.BRAIN_COOLDOWN)
     if kind == "bedrock":
         primary, name = BedrockMantleBrain(), f"bedrock:{settings.BEDROCK_MODEL}"
     elif kind == "anthropic":

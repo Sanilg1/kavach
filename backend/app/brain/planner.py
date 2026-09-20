@@ -135,6 +135,9 @@ def _norm_element(raw: dict, idx: int, used: set[str]) -> Optional[Element]:
             data[k] = ""
         elif not isinstance(data[k], str):
             data[k] = str(data[k])
+    for k in ("text", "label"):  # models often write a literal "\\n" for a line break
+        data[k] = data[k].replace("\\n", "\n")
+    data["steps"] = [str(s).replace("\\n", " ") for s in (data.get("steps") or [])]
     if data.get("size") not in ("title", "large", "normal", "small"):
         data["size"] = "normal"
     if data.get("direction") not in ("horizontal", "vertical"):
@@ -199,8 +202,8 @@ def normalise_plan(raw: dict, topic: dict, page_count: int) -> TeachingPlan:
             continue
         unc = p.get("uncertainty")
         parts.append(PlanPart(
-            part=i + 1,
-            title=str(p.get("title") or f"{topic['name']} - part {i + 1}")[:120],
+            part=len(parts) + 1,
+            title=str(p.get("title") or f"{topic['name']} - part {len(parts) + 1}")[:120],
             duration_target=max(20, min(90, int(p.get("duration_target") or 45))),
             script=" ".join(s.narration for s in scenes),
             visual_plan=[str(v) for v in (p.get("visual_plan") or [])][:12],

@@ -255,12 +255,44 @@ class Renderer:
         if src and dst and src.bbox and dst.bbox:
             c0 = self._bbox_center(src.bbox)
             c1 = self._bbox_center(dst.bbox)
-            return self._clip_to_rect(c1, c0, src.bbox), self._clip_to_rect(c0, c1, dst.bbox)
+            p0, p1 = self._clip_to_rect(c1, c0, src.bbox), self._clip_to_rect(c0, c1, dst.bbox)
+            # several arrows between the same two elements: fan them out perpendicular to the line
+            k, n = self._pair_index(tm)
+            if n > 1:
+                # canonical normal for the pair (independent of arrow direction) so that
+                # replies alternate sides instead of piling up on one
+                a, b = sorted([c0, c1])
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                ln = math.hypot(dx, dy) or 1.0
+                nx, ny = -dy / ln, dx / ln
+                step = max(44 * self.s, self._label_height(tm.el.label) + 16 * self.s)
+                off = (k - (n - 1) / 2) * step          # chronological order, spread around the centre line
+                p0, p1 = (p0[0] + nx * off, p0[1] + ny * off), (p1[0] + nx * off, p1[1] + ny * off)
+            return p0, p1
         if el.x is not None and el.y is not None and el.x2 is not None and el.y2 is not None:
             return (self.px(el.x), self.py(el.y)), (self.px(el.x2), self.py(el.y2))
         cx, cy = self._center(tm)
         w = self.px(el.w or 30)
         return (cx - w / 2, cy), (cx + w / 2, cy)
+
+    def _label_height(self, label: str) -> float:
+        if not label:
+            return 0.0
+        n = len([ln for ln in label.split(chr(10)) if ln.strip()]) or 1
+        return self.font_px("small") * 1.1 * n + 6 * self.s
+
+    def _pair_index(self, tm: Timed) -> tuple[int, int]:
+        """(index of this arrow, total arrows) among arrows between the same two elements."""
+        pair = frozenset((tm.el.from_id, tm.el.to_id))
+        idx, total = 0, 0
+        for st in self.scenes:
+            for other in st.elements:
+                if other.el.type in ("LINE", "ARROW") and other.el.from_id and other.el.to_id \
+                        and frozenset((other.el.from_id, other.el.to_id)) == pair:
+                    if other is tm:
+                        idx = total
+                    total += 1
+        return idx, total
 
     @staticmethod
     def _bbox_center(b: BBox) -> Point:
@@ -382,11 +414,16 @@ class Renderer:
 
     def _label_bg(self, draw, text: str, center: Point, size: str, color, pad: float = 5) -> None:
         font = font_for(self.font_px(size), text)
-        w = font.getlength(text)
-        h = font.size * 1.1
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()] or [text]
+        w = max(font.getlength(ln) for ln in lines)
+        lh = font.size * 1.1
+        h = lh * len(lines)
         draw.rounded_rectangle([center[0] - w / 2 - pad, center[1] - h / 2 - 2, center[0] + w / 2 + pad, center[1] + h / 2 + 2],
                                radius=6 * self.s, fill=BG)
-        draw.text(center, text, font=font, fill=color, anchor="mm")
+        y = center[1] - h / 2 + lh / 2
+        for ln in lines:
+            draw.text((center[0], y), ln, font=font, fill=color, anchor="mm")
+            y += lh
 
     # ------------------------------------------------------------------ element drawing
     def _draw_element(self, img: Image.Image, tm: Timed, p: float, alpha: float, t: float) -> None:
@@ -460,7 +497,9 @@ class Renderer:
                 mx, my = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2
                 ln = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) or 1
                 nx, ny = -(p1[1] - p0[1]) / ln, (p1[0] - p0[0]) / ln
-                off = 16 * self.s
+                # arrows routed between element ids carry their label on the line (the pill
+                # masks it); free-hand arrows keep the label just beside the line
+                off = 0.0 if (el.from_id and el.to_id) else 16 * self.s
                 self._label_bg(draw, el.label, (mx + nx * off, my + ny * off), "small", color)
             if anim == "ARROW_FLOW" and 0.3 < draw_p < 1.0:
                 f = (draw_p - 0.3) / 0.7
