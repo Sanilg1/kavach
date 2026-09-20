@@ -209,7 +209,9 @@ class BedrockConverseBrain:
 
 
 _QUOTA_MARKERS = ("too many tokens", "too many requests", "throttlingexception", "use case details",
-                  "not available for this account", "accessdeniedexception", "serviceunavailable")
+                  "not available for this account", "accessdeniedexception", "serviceunavailable",
+                  "rate_limit", "overloaded", "credit balance", "authentication_error", "invalid x-api-key",
+                  "permission_error", "billing")
 
 
 def _is_quota_error(e: Exception) -> bool:
@@ -218,16 +220,18 @@ def _is_quota_error(e: Exception) -> bool:
 
 
 class FallbackBrain:
-    """Bedrock first; if the account is quota-limited, answer with the offline brain
-    instead and remember it for a cooldown so the app stays responsive. As soon as
-    Bedrock answers again the site uses it - no redeploy needed."""
+    """Try `primary`; if it is quota-limited, answer with `fallback` instead and remember
+    it for a cooldown so the app stays responsive. Fallbacks can be chained
+    (Bedrock -> Anthropic API -> offline). As soon as the primary answers again it is
+    used - no redeploy needed."""
 
     def __init__(self, primary, fallback, primary_name: str, cooldown: float):
         import time
 
         self._time = time
         self.primary, self.fallback = primary, fallback
-        self.primary_name, self.fallback_name = primary_name, "offline"
+        self.primary_name = primary_name
+        self.fallback_name = getattr(fallback, "primary_name", None) or getattr(fallback, "name", "offline")
         self.cooldown = cooldown
         self.blocked_until = 0.0
         self.last_error = ""
@@ -245,35 +249,48 @@ class FallbackBrain:
                     raise
                 self.last_error = str(e)[:300]
                 self.blocked_until = self._time.time() + self.cooldown
-                log.warning("Bedrock unavailable (%s); using the offline brain for %.0f s", self.last_error[:120], self.cooldown)
-        self.last_used = self.fallback_name
-        return self.fallback.complete_json(system, user, max_tokens, attachments=attachments)
+                log.warning("%s unavailable (%s); using %s for %.0f s", self.primary_name, self.last_error[:120],
+                            self.fallback_name, self.cooldown)
+        out = self.fallback.complete_json(system, user, max_tokens, attachments=attachments)
+        self.last_used = getattr(self.fallback, "last_used", self.fallback_name)
+        return out
 
     def status(self) -> dict:
         blocked = self._time.time() < self.blocked_until
+        inner = self.fallback.status() if isinstance(self.fallback, FallbackBrain) else None
+        effective = (inner["effective"] if inner else self.fallback_name) if blocked else self.primary_name
         return {
             "configured": self.primary_name,
-            "effective": self.fallback_name if blocked else self.primary_name,
+            "effective": effective,
             "last_used": self.last_used,
             "retry_in_s": max(0, int(self.blocked_until - self._time.time())) if blocked else 0,
             "last_error": self.last_error,
+            "chain": [self.primary_name] + (inner["chain"] if inner else [self.fallback_name]),
         }
 
 
 def _build():
+    import os
+
     from .mock import MockBrain
 
     kind = settings.BRAIN
+    mock = MockBrain()
+    mock.name = "offline"
+    if kind == "mock":
+        return mock
+    # optional middle tier: the first-party Claude API, used while Bedrock is quota-limited
+    tail = mock
+    if kind != "anthropic" and os.environ.get("ANTHROPIC_API_KEY") and settings.BRAIN_FALLBACK:
+        tail = FallbackBrain(BedrockMantleBrain(first_party=True), mock, f"anthropic:{settings.ANTHROPIC_MODEL}", settings.BRAIN_COOLDOWN)
     if kind == "bedrock":
         primary, name = BedrockMantleBrain(), f"bedrock:{settings.BEDROCK_MODEL}"
     elif kind == "anthropic":
         primary, name = BedrockMantleBrain(first_party=True), f"anthropic:{settings.ANTHROPIC_MODEL}"
-    elif kind == "converse":
-        primary, name = BedrockConverseBrain(), f"bedrock:{settings.BEDROCK_MODEL}"
     else:
-        return MockBrain()
+        primary, name = BedrockConverseBrain(), f"bedrock:{settings.BEDROCK_MODEL}"
     if settings.BRAIN_FALLBACK:
-        return FallbackBrain(primary, MockBrain(), name, settings.BRAIN_COOLDOWN)
+        return FallbackBrain(primary, tail, name, settings.BRAIN_COOLDOWN)
     return primary
 
 

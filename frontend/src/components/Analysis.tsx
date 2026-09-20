@@ -46,6 +46,8 @@ export default function Analysis({ doc, onContinue, onRestart }: { doc: Doc; onC
         <p className="small muted" style={{ margin: "0 0 6px" }}>
           {doc.brain.startsWith("bedrock") ? (
             <span className="chip purple">Analysed by Claude on Amazon Bedrock</span>
+          ) : doc.brain.startsWith("anthropic") ? (
+            <span className="chip purple">Analysed by Claude (Anthropic API · Bedrock quota pending)</span>
           ) : (
             <span className="chip orange">Offline analysis · Bedrock quota pending</span>
           )}
