@@ -393,7 +393,12 @@ class Renderer:
     def _text_lines(self, draw, el_size: str, text: str, center: Point, color, reveal: float = 1.0,
                     max_w: Optional[float] = None, anchor_top: bool = False) -> BBox:
         font = font_for(self.font_px(el_size), text)
-        lines = self._wrap(text, font, max_w or self.px(86))
+        limit = max_w or self.px(86)
+        lines = self._wrap(text, font, limit)
+        widest = max((font.getlength(l) for l in lines), default=0)
+        if widest > limit > 0:  # a single unbreakable word (e.g. non-breaking hyphen): shrink to fit
+            font = font_for(max(10, int(font.size * max(0.55, limit / widest))), text)
+            lines = self._wrap(text, font, limit)
         lh = font.size * 1.25
         total_chars = sum(len(l) for l in lines) or 1
         shown = int(round(reveal * total_chars)) if reveal < 1 else total_chars
