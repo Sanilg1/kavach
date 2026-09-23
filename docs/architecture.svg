@@ -39,9 +39,9 @@
   <!-- ec2 -->
   <rect x="880" y="80" width="280" height="130" class="box aws"/>
   <text x="1020" y="108" text-anchor="middle" class="title">Amazon EC2 · Docker</text>
-  <text x="1020" y="128" text-anchor="middle" class="sub">FastAPI API + worker threads</text>
-  <text x="1020" y="146" text-anchor="middle" class="sub">IAM instance role, no static keys</text>
-  <text x="1020" y="168" text-anchor="middle" class="lbl">extract → plan → narrate → render</text>
+  <text x="1020" y="128" text-anchor="middle" class="sub">FastAPI API + SQS workers (blue/green)</text>
+  <text x="1020" y="146" text-anchor="middle" class="sub">IAM role · secrets from SSM Parameter Store</text>
+  <text x="1020" y="168" text-anchor="middle" class="lbl">extract → plan → validate → layout → render</text>
   <text x="1020" y="188" text-anchor="middle" class="lbl">→ MP4 · combine · notes → S3 / DynamoDB</text>
 
   <!-- edges top row -->
@@ -54,9 +54,9 @@
 
   <!-- brain -->
   <rect x="880" y="290" width="280" height="120" class="box ai"/>
-  <text x="1020" y="318" text-anchor="middle" class="title">Amazon Bedrock · Claude Opus 4.6</text>
-  <text x="1020" y="338" text-anchor="middle" class="sub">Converse API, streaming, adaptive thinking</text>
-  <text x="1020" y="356" text-anchor="middle" class="sub">PDF + page images attached</text>
+  <text x="1020" y="318" text-anchor="middle" class="title">Brain AI chain</text>
+  <text x="1020" y="338" text-anchor="middle" class="sub">Bedrock Claude 4.6 → Groq → offline</text>
+  <text x="1020" y="356" text-anchor="middle" class="sub">typed fallback on quota / outage only</text>
   <text x="1020" y="378" text-anchor="middle" class="lbl">topic map · teaching-plan JSON · Q&amp;A</text>
   <text x="1020" y="396" text-anchor="middle" class="lbl">regeneration from feedback</text>
   <path d="M1020,210 L1020,290" class="edge"/>
@@ -105,12 +105,12 @@
 
   <!-- legend / ops -->
   <rect x="880" y="490" width="280" height="110" class="box"/>
-  <text x="1020" y="518" text-anchor="middle" class="title">Ops</text>
-  <text x="1020" y="540" text-anchor="middle" class="sub">IAM roles · SSM Session Manager</text>
-  <text x="1020" y="558" text-anchor="middle" class="sub">Service Quotas · CloudWatch logs</text>
+  <text x="1020" y="518" text-anchor="middle" class="title">Amazon SQS · Ops</text>
+  <text x="1020" y="540" text-anchor="middle" class="sub">kavach-jobs queue: heartbeat + redelivery</text>
+  <text x="1020" y="558" text-anchor="middle" class="sub">SSM Parameter Store · Session Manager · IAM</text>
   <text x="1020" y="580" text-anchor="middle" class="lbl">deploy_ec2.py · deploy_amplify.py</text>
 
   <text x="24" y="660" class="sub">Regions: ap-south-1 (Mumbai) for Amplify, CloudFront origin, EC2, S3, DynamoDB, Polly · us-west-2 for Bedrock (quotas).</text>
-  <text x="24" y="680" class="sub">If Bedrock is quota-limited the API falls back to an offline planner and retries Bedrock after a cooldown; every document records which brain produced it.</text>
+  <text x="24" y="680" class="sub">If Bedrock is quota-limited the chain falls back to Groq, then an offline planner, retrying Bedrock after a cooldown; every short records which brain made it.</text>
   <text x="24" y="700" class="sub">Local mode runs the same code with filesystem storage, a JSON DB and Windows speech — no AWS account needed.</text>
 </svg>
