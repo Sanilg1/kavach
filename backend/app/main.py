@@ -52,8 +52,10 @@ app.add_middleware(
 
 
 def _recover_interrupted_jobs() -> None:
-    """A crash or redeploy kills in-flight background jobs; mark them so the UI does not
-    show a spinner forever and the student can regenerate."""
+    """With the in-process queue a crash or redeploy loses in-flight jobs; mark them so the
+    UI does not spin forever. With SQS the jobs are redelivered and resume by themselves."""
+    if getattr(worker, "durable", False):
+        return
     try:
         for d in db.list_documents():
             if d.get("status") in ("PROCESSING", "ANALYZING"):
@@ -138,7 +140,8 @@ def languages():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "mode": settings.MODE, "storage": settings.STORAGE, "db": settings.DB,
+    return {"ok": True, "queue": "sqs" if getattr(worker, "durable", False) else "memory",
+            "mode": settings.MODE, "storage": settings.STORAGE, "db": settings.DB,
             "brain": settings.BRAIN, "tts": settings.TTS, "model": settings.BEDROCK_MODEL,
             "brain_status": brain_status()}
 

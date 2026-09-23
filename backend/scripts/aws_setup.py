@@ -71,6 +71,10 @@ def main():
                  gsi=[{"IndexName": "by_document", "KeySchema": [{"AttributeName": "document_id", "KeyType": "HASH"}],
                        "Projection": {"ProjectionType": "ALL"}}])
 
+    q = boto3.client("sqs", region_name=REGION).create_queue(QueueName="kavach-jobs", Attributes={
+        "VisibilityTimeout": "300", "MessageRetentionPeriod": "86400", "ReceiveMessageWaitTimeSeconds": "20"})
+    print(f"queue: {q['QueueUrl']}  (set KAVACH_QUEUE_URL to use it)")
+
     # smoke-test Polly + Bedrock access
     try:
         boto3.client("polly", region_name=REGION).describe_voices(LanguageCode="en-US", Engine="neural")

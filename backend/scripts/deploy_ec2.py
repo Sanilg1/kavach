@@ -2,7 +2,7 @@
 by CloudFront for HTTPS. No local Docker needed - the instance builds the image from a
 zip of this folder that we upload to S3.
 
-    python scripts/deploy_ec2.py                # create (or replace) the instance + CloudFront
+    python scripts/deploy_ec2.py                # blue/green: new instance, switch CloudFront, retire old
     python scripts/deploy_ec2.py --no-cdn       # skip CloudFront
     python scripts/deploy_ec2.py --status       # print instance / URL info
 
@@ -42,9 +42,33 @@ def load_env() -> dict[str, str]:
     for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE"):
         env.pop(k, None)
     env.setdefault("KAVACH_MODE", "aws")
+    env.setdefault("KAVACH_SSM_PREFIX", "/kavach")
     env.setdefault("KAVACH_DATA_DIR", "/tmp/kavach")
     env.setdefault("KAVACH_WORK_DIR", "/tmp/kavach/work")
     return env
+
+
+SECRET_KEYS = ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3", "ANTHROPIC_API_KEY")
+
+
+def push_secrets(env: dict[str, str], region: str) -> list[str]:
+    """Move API keys into SSM Parameter Store (SecureString); return the names moved."""
+    ssm = boto3.client("ssm", region_name=region)
+    moved = []
+    for k in SECRET_KEYS:
+        v = env.pop(k, None)
+        if v:
+            ssm.put_parameter(Name=f"{env['KAVACH_SSM_PREFIX']}/{k}", Value=v, Type="SecureString", Overwrite=True)
+            moved.append(k)
+    return moved
+
+
+def ensure_queue(region: str) -> str:
+    sqs = boto3.client("sqs", region_name=region)
+    url = sqs.create_queue(QueueName=f"{NAME.split('-')[0]}-jobs", Attributes={
+        "VisibilityTimeout": "300", "MessageRetentionPeriod": "86400", "ReceiveMessageWaitTimeSeconds": "20",
+    })["QueueUrl"]
+    return url
 
 
 def zip_backend() -> bytes:
@@ -78,6 +102,13 @@ def ensure_role(iam, bucket: str, region: str, prefix: str) -> str:
              "Resource": [f"arn:aws:dynamodb:{region}:*:table/{prefix}_*", f"arn:aws:dynamodb:{region}:*:table/{prefix}_*/index/*"]},
             {"Effect": "Allow", "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"], "Resource": "*"},
             {"Effect": "Allow", "Action": ["polly:SynthesizeSpeech", "polly:DescribeVoices"], "Resource": "*"},
+            {"Effect": "Allow", "Action": ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage",
+                                            "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"],
+             "Resource": f"arn:aws:sqs:{region}:*:kavach-jobs"},
+            {"Effect": "Allow", "Action": ["ssm:GetParametersByPath", "ssm:GetParameter"],
+             "Resource": f"arn:aws:ssm:{region}:*:parameter/kavach*"},
+            {"Effect": "Allow", "Action": ["kms:Decrypt"], "Resource": "*",
+             "Condition": {"StringEquals": {"kms:ViaService": f"ssm.{region}.amazonaws.com"}}},
         ],
     }
     iam.put_role_policy(RoleName=role, PolicyName="kavach-backend", PolicyDocument=json.dumps(policy))
@@ -197,13 +228,16 @@ def main():
     s3.put_object(Bucket=bucket, Key=key, Body=data)
     print(f"uploaded backend ({len(data) // 1024} KB) -> s3://{bucket}/{key}")
 
+    env["KAVACH_QUEUE_URL"] = ensure_queue(region)
+    moved = push_secrets(env, region)
+    print(f"job queue: {env['KAVACH_QUEUE_URL']}")
+    if moved:
+        print(f"secrets moved to SSM {env['KAVACH_SSM_PREFIX']}/: {', '.join(moved)}")
     role = ensure_role(iam, bucket, region, prefix)
     sg = ensure_sg(ec2)
     ami = ssm.get_parameter(Name="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64")["Parameter"]["Value"]
 
-    for i in existing_instances(ec2):
-        print(f"terminating previous instance {i['InstanceId']}")
-        ec2.terminate_instances(InstanceIds=[i["InstanceId"]])
+    old = [i["InstanceId"] for i in existing_instances(ec2)]
 
     inst = ec2.run_instances(
         ImageId=ami, InstanceType=args.instance_type, MinCount=1, MaxCount=1,
@@ -218,19 +252,32 @@ def main():
     dns = ec2.describe_instances(InstanceIds=[iid])["Reservations"][0]["Instances"][0]["PublicDnsName"]
     print(f"instance running: http://{dns}  (docker build takes ~3-5 min)")
 
-    cdn = None if args.no_cdn else ensure_cdn(cf, dns)
-
-    print("waiting for the API to come up", end="", flush=True)
+    print("waiting for the new instance to become healthy", end="", flush=True)
+    healthy = False
     for _ in range(80):
         try:
             with urllib.request.urlopen(f"http://{dns}/health", timeout=5) as r:
                 print("\nhealth:", r.read().decode())
+                healthy = True
                 break
         except Exception:
             print(".", end="", flush=True)
             time.sleep(10)
-    else:
-        print("\nAPI did not respond yet; check /var/log/kavach-init.log on the instance (SSM Session Manager).")
+    if not healthy:
+        print("\nnew instance never became healthy - keeping the old one live. Terminating the new instance.")
+        ec2.terminate_instances(InstanceIds=[iid])
+        sys.exit(1)
+
+    cdn = None
+    if not args.no_cdn:
+        cdn = ensure_cdn(cf, dns)
+        dist = next(d for d in cf.list_distributions()["DistributionList"]["Items"] if d.get("Comment") == NAME)
+        print("switching CloudFront to the new instance (waits for propagation)...")
+        cf.get_waiter("distribution_deployed").wait(Id=dist["Id"], WaiterConfig={"Delay": 20, "MaxAttempts": 45})
+    if old:
+        # jobs running on the old instance are redelivered by SQS to the new one
+        print(f"retiring previous instance(s): {', '.join(old)}")
+        ec2.terminate_instances(InstanceIds=old)
 
     print("\nBackend URLs:")
     print(f"  http://{dns}")

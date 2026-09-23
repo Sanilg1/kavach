@@ -3,16 +3,21 @@
 > **Compress the delivery, not the knowledge.**
 
 **Live demo:** https://main.d1ex6vljuszbzw.amplifyapp.com · API: https://di1ubb11ugmj1.cloudfront.net/health
-(Amplify Hosting → CloudFront → EC2/Docker → S3 · DynamoDB · Polly · Bedrock, region ap-south-1)
+(Amplify Hosting → CloudFront → EC2/Docker ⇄ SQS → S3 · DynamoDB · Polly · Brain AI, region ap-south-1)
+
+**Brain AI status:** the server tries **Claude Opus 4.6 on Amazon Bedrock** first on every call, then
+**Groq `gpt-oss-120b`**, then an offline planner. Bedrock is currently quota-limited on this
+new AWS account (support cases open), so live lessons are produced by Groq; each document and
+short shows which brain made it, and `/health` reports the chain.
 
 Kavach turns educational notes — PDF, Word, PowerPoint, text or Markdown (≤ 60 pages) — into a learning path of 30–60 second
 **whiteboard revision shorts** with AI narration, PDF source references, quick-check
 questions, follow-up Q&A and feedback-driven regeneration.
 
 ```
-PDF ─▶ S3 ─▶ text extraction + suitability check ─▶ Bedrock (Brain AI) ─▶ topic map / learning order
-     ─▶ student picks topics ─▶ Bedrock teaching plan JSON ─▶ Polly narration + whiteboard renderer
-     ─▶ FFmpeg MP4 ─▶ S3 ─▶ React feed (video · sources · quick check · ask · feedback)
+notes ─▶ S3 ─▶ extraction + suitability ─▶ Brain AI ─▶ topic map / learning order
+      ─▶ student picks topics ─▶ SQS job ─▶ Brain teaching-plan JSON ─▶ validator (1 repair round)
+      ─▶ layout engine ─▶ Polly narration + renderer ─▶ FFmpeg MP4 ─▶ S3 ─▶ React shorts feed
 ```
 
 ![Kavach architecture](docs/architecture.png)
@@ -148,9 +153,13 @@ python scripts/deploy_ec2.py          # prints http://<ec2> and https://<cloudfr
 python scripts/deploy_ec2.py --status
 ```
 
-Re-running replaces the instance with the current code (state lives in S3/DynamoDB, so
-nothing is lost). Logs: `/var/log/kavach-init.log` and `docker logs kavach` via SSM
-Session Manager.
+Deploys are **blue/green**: a new instance is launched and health-checked, CloudFront is
+switched to it and waits for propagation, and only then is the old instance terminated (if
+the new one never gets healthy, the old one stays live). Jobs live in **SQS** (`kavach-jobs`),
+so work in flight on the old instance is redelivered to the new one. API keys are moved from
+`backend/.env` into **SSM Parameter Store** (SecureString, `/kavach/*`) and read at startup
+through the instance role - they never appear in EC2 user-data. Logs: `/var/log/kavach-init.log`
+and `docker logs kavach` via SSM Session Manager.
 
 **Frontend → Amplify Hosting (manual zip deployment, no GitHub connection needed).**
 
@@ -227,6 +236,26 @@ Shorts are portrait 9:16 (720x1280) by default; set `KAVACH_VIDEO_WIDTH/HEIGHT` 
   board text stays in English, and captions switch to a Devanagari font for Hindi.
 - Progress bar burned into every short; `backend/.env` is loaded automatically.
 
+## Quality & reliability
+
+- **Layout engine** (`app/render/renderer.py`, `_sanitize_layout`): the model decides *what*
+  to draw; the renderer clamps everything onto the board, enlarges undersized tables/flows/
+  diagrams for a phone screen, places elements (and arrow corridors) without collisions, and
+  starts a fresh board - carrying the title - when a scene will not fit.
+- **Plan validator** (`app/brain/planner.py`, `validate_plan`): narration length (75–140
+  words per short), scene count, quiz shape and PDF-only grounding are checked before any
+  rendering; failures go back to the model once with the specific problems listed.
+- **Typed provider errors**: only `BrainUnavailable` (quota, throttling, auth, outage,
+  timeouts) moves the chain to the next brain; real bugs surface instead of hiding behind
+  a fallback. Provider timeouts are short (8 s connect, 60 s between streamed chunks).
+- **Atomic state transitions** (DynamoDB conditional writes): a double-clicked Generate,
+  Regenerate or Full-lesson cannot start two jobs.
+- **Tests**: `cd backend && pip install -r requirements-dev.txt && pytest` - 34 tests,
+  including layout checks over 14 real model plans (`tests/fixtures`), every primitive,
+  Devanagari text, all upload formats, the FFmpeg pipe regression and the full API flow.
+- `python scripts/render_check.py --live <api> <document_id>` renders a contact sheet of
+  every scene for eyeballing layout.
+
 ## What we learned (First Commit, 17–20 Sep 2026)
 
 **Product**
@@ -267,15 +296,17 @@ Shorts are portrait 9:16 (720x1280) by default; set `KAVACH_VIDEO_WIDTH/HEIGHT` 
 - **Bedrock is wired, tested and deployed but throttled.** Claude Opus 4.6 answers small
   requests on this account; real teaching-plan requests hit the new-account daily token
   cap on all models. Four quota-increase cases are open with AWS
-  (178973245700023, 178973245400759, 178973245300071, 178973245300119). The live demo
-  therefore runs the **offline mock brain** (`KAVACH_BRAIN=mock`), which builds the topic
-  map from the PDF's headings and uses a hand-written plan for the TCP handshake topic;
-  other topics get generic lessons. Switching to Claude is one line in `backend/.env` +
-  `python scripts/deploy_ec2.py`.
+  (178973245700023, 178973245400759, 178973245300071, 178973245300119). Until they are
+  resolved the brain chain serves lessons from Groq `gpt-oss-120b` (text-only, so the PDF
+  and page-image attachments are only used when Bedrock answers). No redeploy is needed
+  when Bedrock opens up - the chain retries it every 10 minutes.
 - Only text-based PDFs are handled well; OCR is an optional hook (pytesseract).
-- Single instance, in-process job queue: fine for a demo, not for many concurrent users
-  (next step: SQS + a render worker autoscaling group, or Step Functions).
-- English only; one Polly voice.
+- One instance consumes the SQS queue today. The queue already supports several consumers;
+  scaling out means an Auto Scaling group (or ECS service) on the same image, scaled on
+  queue depth. The image is still built on the instance rather than pushed to ECR.
+- No accounts: documents are reachable by id (a device library remembers them). Cost is
+  bounded by a per-IP rate limit (`KAVACH_RATE_LIMIT_PER_HOUR`) and a daily LLM-call cap
+  (`KAVACH_DAILY_LLM_CALLS`); Cognito sign-in is the next step for real users.
 
 ## MVP success criteria (spec §28)
 

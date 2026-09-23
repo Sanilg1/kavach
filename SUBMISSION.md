@@ -44,7 +44,9 @@ question to check themselves — from *their* material, in minutes.
 | Amazon S3 | PDFs, plans, audio, videos (presigned playback) |
 | Amazon DynamoDB | documents / topics / reels metadata |
 | Amazon Polly | narration + speech marks for captions |
-| Amazon Bedrock (Claude Opus 4.6, Converse API) | topic map, teaching plans, Q&A, regeneration — wired and tested; currently throttled by new-account quotas (support cases open), so the live demo runs the offline brain |
+| Amazon Bedrock (Claude Opus 4.6, Converse API) | first tier of the Brain AI chain (topic map, teaching plans, Q&A, regeneration) — wired and tested; currently throttled by new-account quotas (support cases open), so live lessons come from the next tier, Groq gpt-oss-120b |
+| Amazon SQS | durable job queue: generation survives crashes and blue/green deploys |
+| SSM Parameter Store | API keys as SecureString, read via the instance role |
 | IAM, SSM, Service Quotas | roles, remote ops, quota requests |
 
 Deployment is two commands: `python backend/scripts/deploy_ec2.py` and
@@ -73,5 +75,5 @@ App Runner CPU throttling vs. EC2; Polly speech marks for captions; a Linux-only
 | 1:50 | Quick check → answer → explanation; Ask "why SYN-ACK not just ACK?" | "After every short: a question that tests understanding, and follow-up Q&A grounded in the PDF pages." |
 | 2:10 | Rate → "Too fast" → regenerating badge | "Feedback regenerates the short with a different teaching approach." |
 | 2:25 | Full lesson button + Notes download | "All shorts stitch into one lesson; notes export as Markdown." |
-| 2:35 | Architecture diagram | Name Amplify, CloudFront, EC2, S3, DynamoDB, Polly, Bedrock. "Bedrock is wired and tested; our new account's quota is still being raised, so today's demo runs the offline brain — the code path is identical." |
+| 2:35 | Architecture diagram | Name Amplify, CloudFront, EC2, S3, DynamoDB, Polly, Bedrock. "The brain chain tries Claude on Bedrock first; our new account's quota is still being raised, so today's lessons come from Groq — the chain switches back automatically." |
 | 2:50 | Learnings slide | Two or three of the learnings above. "Thanks." |

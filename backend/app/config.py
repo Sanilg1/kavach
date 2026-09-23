@@ -25,6 +25,35 @@ def _load_dotenv(path: Path) -> None:
 _load_dotenv(Path(os.environ.get("KAVACH_ENV_FILE", BACKEND_DIR / ".env")))
 
 
+def _load_ssm_secrets() -> None:
+    """In AWS, API keys live in SSM Parameter Store (SecureString) under KAVACH_SSM_PREFIX,
+    e.g. /kavach/GROQ_API_KEY, instead of plaintext env files or EC2 user-data."""
+    prefix = os.environ.get("KAVACH_SSM_PREFIX", "").rstrip("/")
+    if not prefix:
+        return
+    try:
+        import boto3
+
+        ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
+        token = None
+        while True:
+            kw = {"Path": prefix, "WithDecryption": True, "Recursive": False}
+            if token:
+                kw["NextToken"] = token
+            resp = ssm.get_parameters_by_path(**kw)
+            for prm in resp.get("Parameters", []):
+                name = prm["Name"].rsplit("/", 1)[-1]
+                os.environ.setdefault(name, prm["Value"])
+            token = resp.get("NextToken")
+            if not token:
+                break
+    except Exception as e:  # noqa: BLE001 - the app still runs, just without those keys
+        print(f"[kavach] could not load secrets from SSM {prefix}: {e}")
+
+
+_load_ssm_secrets()
+
+
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
@@ -92,6 +121,8 @@ class Settings:
     # public base URL used when building media links in local storage mode
     PUBLIC_BASE_URL = _env("KAVACH_PUBLIC_BASE_URL", "http://localhost:8000")
     WORKERS = int(_env("KAVACH_WORKERS", "2"))
+    # durable job queue (Amazon SQS); empty = in-process queue
+    QUEUE_URL = _env("KAVACH_QUEUE_URL", "")
 
 
 settings = Settings()
