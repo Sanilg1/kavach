@@ -159,8 +159,208 @@ class Renderer:
             return ((bbox[2] - bbox[0]) / self.W * 100, (bbox[3] - bbox[1]) / self.H * 100 + 2)
         return (el.w or 20, el.h or 10)
 
+    # ------------------------------------------------------------------ layout sanitiser
+    # The brain decides what to draw; models are sloppy with coordinates. Keep every
+    # element on the board, and when a new scene would draw on top of existing content
+    # (and cannot be nudged clear), start a fresh board that keeps the title.
+    X_MIN, X_MAX, Y_MIN, Y_MAX = 5.0, 95.0, 15.0, 86.0
+    _SIZED = ("BOX", "CIRCLE", "FLOW", "TIMELINE", "TABLE", "IMAGE")
+
+    def _unit_bbox(self, el: Element) -> Optional[tuple[float, float, float, float]]:
+        """(x0, y0, x1, y1) in board units for elements with an explicit position."""
+        if el.type in ("HIGHLIGHT", "LINE", "ARROW"):
+            return None
+        if el.type == "DIAGRAM":
+            xs = [float(n.get("x", 50)) for n in el.nodes if n.get("x") is not None]
+            ys = [float(n.get("y", 50)) for n in el.nodes if n.get("y") is not None]
+            if not xs:
+                return None
+            return (min(xs) - 12, min(ys) - 4, max(xs) + 12, max(ys) + 4)
+        if el.x is None or el.y is None:
+            return None
+        w, h = self._default_size(el)
+        return (el.x - w / 2, el.y - h / 2, el.x + w / 2, el.y + h / 2)
+
+    def _fit_element(self, el: Element) -> None:
+        """Models often ask for tiny tables/flows; make them readable on a phone."""
+        if el.type == "TABLE" and el.rows:
+            ncol = max(len(r) for r in el.rows)
+            el.w = max(el.w or 0, min(90.0, 30.0 * ncol))
+            el.h = max(el.h or 0, 6.5 * len(el.rows) + 2)
+            el.x = 50.0 if el.x is None or el.w >= 70 else el.x
+        elif el.type == "FLOW" and el.steps:
+            n = len(el.steps)
+            if el.direction == "vertical" or n > 4:   # a phone board is tall: long flows go vertical
+                el.direction = "vertical"
+                el.w = max(el.w or 0, 64.0)
+                el.h = min(max(el.h or 0, 9.0 * n + 2), self.Y_MAX - self.Y_MIN)
+                el.x = 50.0
+            else:
+                el.w = max(el.w or 0, 86.0)
+                el.h = max(el.h or 0, 11.0)
+                el.x = 50.0
+        elif el.type == "TIMELINE":
+            el.w, el.x = max(el.w or 0, 84.0), 50.0
+        elif el.type == "DIAGRAM" and el.nodes:
+            # spread nodes out if the model squeezed them together
+            xs = [float(n["x"]) for n in el.nodes if n.get("x") is not None]
+            ys = [float(n["y"]) for n in el.nodes if n.get("y") is not None]
+            if len(xs) == len(el.nodes) and len(el.nodes) > 1:
+                span_x, span_y = max(xs) - min(xs), max(ys) - min(ys)
+                cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+                fx = 56.0 / span_x if 0 < span_x < 56 else 1.0
+                fy = min(1.6, 24.0 / span_y) if 0 < span_y < 24 else 1.0
+                for n in el.nodes:
+                    n["x"] = 50 + (float(n["x"]) - cx) * fx
+                    n["y"] = cy + (float(n["y"]) - cy) * fy
+
+    def _clamp_element(self, el: Element) -> None:
+        self._fit_element(el)
+        if el.type in self._SIZED:
+            if el.w is not None:
+                el.w = min(el.w, self.X_MAX - self.X_MIN)
+            if el.h is not None:
+                el.h = min(el.h, self.Y_MAX - self.Y_MIN)
+        if el.type == "DIAGRAM":
+            for n in el.nodes:
+                if n.get("x") is not None:
+                    n["x"] = min(max(float(n["x"]), self.X_MIN + 8), self.X_MAX - 8)
+                if n.get("y") is not None:
+                    n["y"] = min(max(float(n["y"]), self.Y_MIN + 3), self.Y_MAX - 3)
+            return
+        if el.type in ("LINE", "ARROW"):
+            for a in ("x", "x2"):
+                v = getattr(el, a)
+                if v is not None:
+                    setattr(el, a, min(max(v, self.X_MIN), self.X_MAX))
+            for a in ("y", "y2"):
+                v = getattr(el, a)
+                if v is not None:
+                    setattr(el, a, min(max(v, self.Y_MIN - 2), self.Y_MAX + 2))
+            return
+        b = self._unit_bbox(el)
+        if not b:
+            return
+        w, h = b[2] - b[0], b[3] - b[1]
+        title_like = el.type == "TEXT" and (el.size == "title" or el.y <= 12)
+        y_min = 4.0 if title_like else self.Y_MIN
+        el.x = min(max(el.x, self.X_MIN + w / 2), self.X_MAX - w / 2)
+        el.y = min(max(el.y, y_min + h / 2), self.Y_MAX - h / 2) if h < self.Y_MAX - y_min else (y_min + self.Y_MAX) / 2
+
+    @staticmethod
+    def _overlap(a, b) -> float:
+        ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+        iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+        inter = ix * iy
+        if inter <= 0:
+            return 0.0
+        smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1])) or 1.0
+        return inter / smaller
+
+    @staticmethod
+    def _shift(el: Element, dx: float, dy: float) -> None:
+        if el.type == "DIAGRAM":
+            for n in el.nodes:
+                if n.get("x") is not None:
+                    n["x"] = float(n["x"]) + dx
+                if n.get("y") is not None:
+                    n["y"] = float(n["y"]) + dy
+            return
+        if el.x is not None:
+            el.x += dx
+        if el.y is not None:
+            el.y += dy
+
+    def _free_slot(self, b, placed) -> Optional[float]:
+        """Vertical shift that puts bbox b clear of everything placed (closest first)."""
+        h = b[3] - b[1]
+        best = None
+        y = self.Y_MIN
+        while y + h <= self.Y_MAX + 1e-6:
+            cand = (b[0], y, b[2], y + h)
+            if not any(self._overlap(cand, ob) > 0.08 for ob in placed):
+                dy = y - b[1]
+                if best is None or abs(dy) < abs(best):
+                    best = dy
+            y += 1.0
+        return best
+
+    def _connector_band(self, el: Element, boxes: dict, placed: list) -> Optional[tuple]:
+        """Corridor an arrow/line occupies, so later elements are not placed on top of it."""
+        if el.from_id and el.to_id and el.from_id in boxes and el.to_id in boxes:
+            a, b = boxes[el.from_id], boxes[el.to_id]
+            ax, ay = (a[0] + a[2]) / 2, (a[1] + a[3]) / 2
+            bx, by = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+            lo_y, hi_y = min(a[1], b[1]), max(a[3], b[3])
+            return (min(ax, bx), lo_y, max(ax, bx), hi_y)
+        if None not in (el.x, el.y, el.x2, el.y2):
+            return (min(el.x, el.x2), min(el.y, el.y2) - 3, max(el.x, el.x2), max(el.y, el.y2) + 3)
+        return None
+
+    def _place_scene(self, scene, placed: list, boxes: Optional[dict] = None) -> bool:
+        """Place the scene's elements one by one; False if something cannot fit."""
+        boxes = boxes if boxes is not None else {}
+        for el in scene.elements:
+            if el.type in ("ARROW", "LINE"):
+                band = self._connector_band(el, boxes, placed)
+                if band:
+                    placed.append(band)
+                continue
+            b = self._unit_bbox(el)
+            if not b:
+                continue
+            if any(self._overlap(b, ob) > 0.08 for ob in placed):
+                dy = self._free_slot(b, placed)
+                if dy is None:
+                    return False
+                self._shift(el, 0.0, dy)
+                b = self._unit_bbox(el)
+            m = 2.0   # breathing room between elements
+            placed.append((b[0] - m, b[1] - m, b[2] + m, b[3] + m))
+            if el.id:
+                boxes[el.id] = b
+        return True
+
+    def _sanitize_layout(self, part: PlanPart) -> None:
+        placed: list = []          # bboxes currently visible on the board
+        boxes: dict = {}           # element id -> bbox, for arrow corridors
+        title: Optional[Element] = None
+        def has_title(sc) -> bool:
+            return any(e.type == "TEXT" and (e.size == "title" or (e.y is not None and e.y <= 12)) for e in sc.elements)
+
+        for si, scene in enumerate(part.scenes):
+            if scene.clear:
+                placed, boxes = [], {}
+                if si > 0 and title is not None and not has_title(scene):
+                    scene.elements.insert(0, title.model_copy(update={"id": f"{title.id}_c{si}", "animation": "FADE_IN"}))
+            for el in scene.elements:
+                self._clamp_element(el)
+            snapshot = [e.model_copy(deep=True) for e in scene.elements]
+            trial, trial_boxes = list(placed), dict(boxes)
+            if self._place_scene(scene, trial, trial_boxes):
+                placed, boxes = trial, trial_boxes
+            else:
+                # no room on the current board: fresh board for this scene, title carried over
+                scene.elements = snapshot
+                scene.clear = True
+                placed, boxes = [], {}
+                if si > 0 and title is not None and not any(
+                        e.type == "TEXT" and (e.size == "title" or (e.y is not None and e.y <= 12)) for e in scene.elements):
+                    carried = title.model_copy(update={"id": f"{title.id}_s{si}", "animation": "FADE_IN"})
+                    scene.elements.insert(0, carried)
+                if not self._place_scene(scene, placed, boxes):
+                    # still too much for one board: shrink the big items and accept
+                    for el in scene.elements:
+                        if el.type in ("TABLE", "FLOW", "IMAGE", "TIMELINE") and el.h:
+                            el.h *= 0.7
+            for el in scene.elements:
+                if el.type == "TEXT" and (el.size == "title" or (el.y is not None and el.y <= 12)):
+                    title = el
+                    break
+
     def build(self, part: PlanPart, scene_durations: list[float],
               scene_words: Optional[list[list[tuple[float, str]]]] = None) -> None:
+        self._sanitize_layout(part)
         t0 = 0.0
         cursor_y = 22.0
         order = 0
@@ -607,7 +807,7 @@ class Renderer:
             self._polyline(draw, self._wobble((x0, y0 + rh * r), (x0 + W, y0 + rh * r), seed + 50 + r), color, self.stroke(0.6), 1.0)
         for r in range(shown):
             for c, cell in enumerate(rows[r]):
-                self._text_lines(draw, "small", cell, (x0 + cw * c + cw / 2, y0 + rh * r + rh / 2),
+                self._text_lines(draw, "normal" if len(cell) <= 14 else "small", cell, (x0 + cw * c + cw / 2, y0 + rh * r + rh / 2),
                                  color if r else _color(el.color or "blue"), max_w=cw - 10)
 
     def _draw_diagram(self, draw, tm, color, p, seed) -> None:
@@ -626,8 +826,9 @@ class Renderer:
         font_small = self.font_px("small")
         for i, n in enumerate(nodes):
             label = str(n.get("label", n.get("id", "")))
-            nw = max(self.px(11), font_for(font_small, label).getlength(label) + 24 * self.s)
-            nh = self.px(6.5)
+            font_node = self.font_px("normal")
+            nw = min(self.px(44), max(self.px(22), font_for(font_node, label).getlength(label) + 30 * self.s))
+            nh = self.py(5.2)
             x, y = self.px(float(n["x"])), self.py(float(n["y"]))
             b = (x - nw / 2, y - nh / 2, x + nw / 2, y + nh / 2)
             boxes[str(n.get("id"))] = b
@@ -640,7 +841,7 @@ class Renderer:
             else:
                 self._sketch_rect(draw, b, ncolor, self.stroke(0.9), local, seed + i, fill=_tint(str(n.get("color", el.color))))
             if local > 0.5:
-                self._text_lines(draw, "small", label, (x, y), ncolor, max_w=nw - 8)
+                self._text_lines(draw, "normal", label, (x, y), ncolor, max_w=nw - 10)
         for j, e in enumerate(el.edges):
             local = _clamp(p * total - len(nodes) - j)
             if local <= 0:
