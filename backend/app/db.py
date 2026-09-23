@@ -53,6 +53,29 @@ class LocalDB:
             self._save(d)
             return doc
 
+    def transition_document(self, doc_id: str, field: str, allowed: set, **fields) -> bool:
+        """Set fields only if doc[field] is currently one of `allowed` (None = unset). Atomic."""
+        with self.lock:
+            d = self._load()
+            doc = d["documents"].get(doc_id)
+            if doc is None or doc.get(field) not in allowed:
+                return False
+            doc.update(fields)
+            doc["updated_at"] = now_iso()
+            self._save(d)
+            return True
+
+    def transition_reel(self, reel_id: str, field: str, allowed: set, **fields) -> bool:
+        with self.lock:
+            d = self._load()
+            r = d["reels"].get(reel_id)
+            if r is None or r.get(field) not in allowed:
+                return False
+            r.update(fields)
+            r["updated_at"] = now_iso()
+            self._save(d)
+            return True
+
     def list_documents(self) -> list[dict]:
         with self.lock:
             docs = list(self._load()["documents"].values())
@@ -154,6 +177,39 @@ class DynamoDB:
             ExpressionAttributeValues=values, ReturnValues="ALL_NEW",
         )
         return _from_ddb(r["Attributes"])
+
+    def _transition(self, table, key: dict, field: str, allowed: set, fields: dict) -> bool:
+        from botocore.exceptions import ClientError
+
+        fields = dict(fields, updated_at=now_iso())
+        names = {f"#f{i}": k for i, k in enumerate(fields)}
+        names["#c"] = field
+        values = {f":v{i}": _to_ddb(v) for i, v in enumerate(fields.values())}
+        conds = []
+        vals = [a for a in allowed if a is not None]
+        for i, a in enumerate(vals):
+            values[f":a{i}"] = a
+        if vals:
+            conds.append("#c IN (" + ", ".join(f":a{i}" for i in range(len(vals))) + ")")
+        if None in allowed:
+            conds.append("attribute_not_exists(#c)")
+        cond = "attribute_exists(" + next(iter(key)) + ") AND (" + " OR ".join(conds or ["attribute_exists(#c)"]) + ")"
+        try:
+            table.update_item(
+                Key=key, UpdateExpression="SET " + ", ".join(f"#f{i} = :v{i}" for i in range(len(fields))),
+                ConditionExpression=cond, ExpressionAttributeNames=names, ExpressionAttributeValues=values,
+            )
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return False
+            raise
+
+    def transition_document(self, doc_id: str, field: str, allowed: set, **fields) -> bool:
+        return self._transition(self.documents, {"document_id": doc_id}, field, allowed, fields)
+
+    def transition_reel(self, reel_id: str, field: str, allowed: set, **fields) -> bool:
+        return self._transition(self.reels, {"reel_id": reel_id}, field, allowed, fields)
 
     def put_document(self, doc: dict) -> None:
         self.documents.put_item(Item=_to_ddb(doc))

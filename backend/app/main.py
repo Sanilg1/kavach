@@ -16,11 +16,12 @@ GET  /media/{key}                    local-storage media (S3 mode returns presig
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -37,14 +38,19 @@ from .worker import worker
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("kavach.api")
 
-app = FastAPI(title="Kavach API", version="0.1.0", description="Compress the delivery, not the knowledge.")
+@contextlib.asynccontextmanager
+async def _lifespan(_app):
+    _recover_interrupted_jobs()
+    yield
+
+
+app = FastAPI(title="Kavach API", version="0.2.0", description="Compress the delivery, not the knowledge.", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.CORS_ORIGINS or ["*"], allow_credentials=False,
     allow_methods=["*"], allow_headers=["*"],
 )
 
 
-@app.on_event("startup")
 def _recover_interrupted_jobs() -> None:
     """A crash or redeploy kills in-flight background jobs; mark them so the UI does not
     show a spinner forever and the student can regenerate."""
@@ -90,6 +96,37 @@ def _public_reel(r: dict) -> dict:
                          if r.get("status") == "COMPLETED" else None)
     r["sources_label"] = pipeline._fmt_pages(r.get("sources") or [])
     return r
+
+
+# ---------------------------------------------------------------- abuse guard
+_EXPENSIVE = ("/generate", "/regenerate", "/ask", "/combine")
+_hits: dict[str, list[float]] = {}
+_hits_lock = __import__("threading").Lock()
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
+
+
+@app.middleware("http")
+async def _rate_limit(request: Request, call_next):
+    """Per-IP sliding-window limit on the requests that cost LLM/TTS/render time."""
+    path = request.url.path
+    costly = request.method == "POST" and (path == "/documents" or path.endswith(_EXPENSIVE))
+    if costly and settings.RATE_LIMIT_PER_HOUR > 0:
+        import time as _t
+
+        ip, now = _client_ip(request), _t.time()
+        with _hits_lock:
+            recent = [t for t in _hits.get(ip, []) if now - t < 3600]
+            if len(recent) >= settings.RATE_LIMIT_PER_HOUR:
+                retry = int(3600 - (now - recent[0])) + 1
+                return JSONResponse({"detail": f"Too many requests - try again in {retry // 60 + 1} min."},
+                                    status_code=429, headers={"Retry-After": str(retry)})
+            recent.append(now)
+            _hits[ip] = recent
+    return await call_next(request)
 
 
 @app.get("/languages")
@@ -197,7 +234,9 @@ def generate(doc_id: str, body: GenerateRequest | None = None):
         raise HTTPException(409, "Generation already in progress")
     if not any(t.get("selected") for t in db.list_topics(doc_id)):
         raise HTTPException(400, "Select at least one topic")
-    db.update_document(doc_id, status="GENERATING", progress="Queued", ai_enhanced=body.ai_enhanced, language=body.language)
+    if not db.transition_document(doc_id, "status", {"READY", "COMPLETED", "FAILED"}, status="GENERATING",
+                                  progress="Queued", ai_enhanced=body.ai_enhanced, language=body.language, error=None):
+        raise HTTPException(409, "Generation already in progress")
     worker.submit(pipeline.generate_document, doc_id, body.ai_enhanced, body.topic_ids, body.language)
     return {"document_id": doc_id, "status": "GENERATING"}
 
@@ -222,7 +261,8 @@ def combine(doc_id: str):
         raise HTTPException(409, "Combined lesson is already being built")
     if not any(r.get("status") == "COMPLETED" for r in db.list_reels(doc_id)):
         raise HTTPException(400, "No completed shorts yet")
-    db.update_document(doc_id, combined_status="BUILDING")
+    if not db.transition_document(doc_id, "combined_status", {None, "COMPLETED", "FAILED"}, combined_status="BUILDING"):
+        raise HTTPException(409, "Combined lesson is already being built")
     worker.submit(pipeline.combine_document, doc_id)
     return {"document_id": doc_id, "combined_status": "BUILDING"}
 
@@ -254,9 +294,11 @@ def regenerate(reel_id: str, body: RegenerateRequest):
     r = db.get_reel(reel_id)
     if not r:
         raise HTTPException(404, "Reel not found")
-    if r.get("status") in ("PLANNING", "NARRATING", "RENDERING"):
+    doc = db.get_document(r["document_id"]) or {}
+    if doc.get("status") == "GENERATING":
+        raise HTTPException(409, "Wait for the other shorts to finish generating")
+    if not db.transition_reel(reel_id, "status", {"COMPLETED", "FAILED", "PENDING"}, status="PLANNING", feedback=body.feedback):
         raise HTTPException(409, "Reel is already being generated")
-    db.update_reel(reel_id, status="PLANNING", feedback=body.feedback)
     worker.submit(pipeline.regenerate_reel, reel_id, body.feedback, body.ai_enhanced)
     return {"reel_id": reel_id, "status": "PLANNING"}
 
