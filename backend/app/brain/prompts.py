@@ -69,8 +69,9 @@ renderer decides how to draw it. Think like a great teacher at a whiteboard, dra
 talking.
 
 SHORT DESIGN
-- Each part (short) explains one coherent idea in 30-60 seconds of narration
-  (roughly 70-140 words). Split a rich topic into 2-3 parts; a simple one is 1 part.
+- Each part (short) explains one coherent idea in 30-60 seconds of narration.
+  HARD REQUIREMENT: 75-140 words of narration per part in total (count them). Shorter
+  shorts are rejected. Split a rich topic into 2-3 parts; a simple one is 1 part.
 - Each part is a list of scenes. A scene = one narration chunk (1-3 sentences, ~6-15 s)
   plus the visual elements that appear while it is spoken. Use 3-6 scenes per part.
 - The board accumulates: elements from earlier scenes stay visible until a scene sets

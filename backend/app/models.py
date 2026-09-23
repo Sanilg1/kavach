@@ -130,6 +130,7 @@ class PlanPart(BaseModel):
 
 class TeachingPlan(BaseModel):
     brain: str = ""
+    quality_issues: list[str] = []         # validator findings that survived the repair round
     topic: str
     topic_id: str = ""
     learning_order: int = 0

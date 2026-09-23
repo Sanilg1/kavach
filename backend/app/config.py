@@ -59,6 +59,10 @@ class Settings:
     # if Bedrock is quota-limited, answer with the offline brain and retry Bedrock after a cooldown
     BRAIN_FALLBACK = _env("KAVACH_BRAIN_FALLBACK", "1") not in ("0", "false", "no")
     BRAIN_COOLDOWN = float(_env("KAVACH_BRAIN_COOLDOWN", "600"))
+    # cost guard: max LLM calls per day per server (0 = unlimited); beyond it the offline brain answers
+    DAILY_LLM_CALLS = int(_env("KAVACH_DAILY_LLM_CALLS", "600"))
+    # abuse guard: expensive requests per client IP per hour (upload / generate / regenerate / ask / combine)
+    RATE_LIMIT_PER_HOUR = int(_env("KAVACH_RATE_LIMIT_PER_HOUR", "60"))
     BRAIN_MAX_TOKENS = int(_env("KAVACH_BRAIN_MAX_TOKENS", "32000"))
     # send the PDF / page images to the brain so it can see diagrams, tables, equations
     BRAIN_VISION = _env("KAVACH_BRAIN_VISION", "1") not in ("0", "false", "no")

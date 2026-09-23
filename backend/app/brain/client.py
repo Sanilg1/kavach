@@ -24,6 +24,40 @@ class BrainError(RuntimeError):
     pass
 
 
+class BrainUnavailable(BrainError):
+    """The provider cannot serve right now (quota, throttling, auth, outage).
+    Only this error moves the fallback chain to the next brain; anything else is a
+    real bug (bad request, bad output) and is surfaced."""
+
+
+# Bedrock error codes that mean "this provider can't serve us right now"
+_BEDROCK_UNAVAILABLE = {
+    "ThrottlingException", "ServiceQuotaExceededException", "AccessDeniedException",
+    "ResourceNotFoundException", "ModelNotReadyException", "ServiceUnavailableException",
+    "ModelTimeoutException", "InternalServerException", "ModelErrorException",
+    "UnrecognizedClientException", "ExpiredTokenException",
+}
+
+
+def _daily_budget_ok() -> bool:
+    """Per-process daily cap on LLM calls (KAVACH_DAILY_LLM_CALLS, 0 = unlimited)."""
+    import datetime
+
+    cap = settings.DAILY_LLM_CALLS
+    if cap <= 0:
+        return True
+    today = datetime.date.today().isoformat()
+    if _BUDGET["day"] != today:
+        _BUDGET.update(day=today, calls=0)
+    if _BUDGET["calls"] >= cap:
+        return False
+    _BUDGET["calls"] += 1
+    return True
+
+
+_BUDGET = {"day": "", "calls": 0}
+
+
 # attachments: [{"kind": "pdf", "bytes": b, "name": "study-material"} | {"kind": "image", "bytes": b, "format": "jpeg"}]
 Attachment = dict[str, Any]
 
@@ -61,14 +95,14 @@ class BedrockMantleBrain:
 
     def __init__(self, first_party: bool = False):
         if first_party:
-            from anthropic import Anthropic
+            from anthropic import Anthropic, Timeout
 
-            self.client = Anthropic(timeout=600, max_retries=2)
+            self.client = Anthropic(timeout=Timeout(600, connect=8), max_retries=1)
             self.model = settings.ANTHROPIC_MODEL
         else:
-            from anthropic import AnthropicBedrockMantle
+            from anthropic import AnthropicBedrockMantle, Timeout
 
-            self.client = AnthropicBedrockMantle(aws_region=settings.BEDROCK_REGION, timeout=600, max_retries=2)
+            self.client = AnthropicBedrockMantle(aws_region=settings.BEDROCK_REGION, timeout=Timeout(600, connect=8), max_retries=1)
             self.model = settings.BEDROCK_MODEL
         self._effort_supported = True
 
@@ -90,7 +124,7 @@ class BedrockMantleBrain:
 
     def complete_json(self, system: str, user: str, max_tokens: int | None = None,
                       attachments: list[Attachment] | None = None) -> dict:
-        from anthropic import APIStatusError
+        from anthropic import APIConnectionError, APIStatusError
 
         kwargs: dict[str, Any] = dict(
             model=self.model,
@@ -116,8 +150,12 @@ class BedrockMantleBrain:
                 kwargs.pop("output_config", None)
                 kwargs.pop("thinking", None)
                 text = self._stream(kwargs)
+            elif e.status_code in (401, 403, 404, 408, 429, 529) or e.status_code >= 500:
+                raise BrainUnavailable(f"{self.model} unavailable ({e.status_code}): {str(e)[:200]}") from e
             else:
                 raise BrainError(f"Bedrock error: {e}") from e
+        except APIConnectionError as e:
+            raise BrainUnavailable(f"{self.model} connection error: {e}") from e
         return _extract_json(text)
 
     def _stream(self, kwargs: dict) -> str:
@@ -164,7 +202,7 @@ class GroqBrain:
                 payload = {"error": {"message": detail[:400]}}
             return e.code, payload, dict(e.headers)
         except (urllib.error.URLError, TimeoutError) as e:
-            raise BrainError(f"Groq connection error: {e}") from e
+            raise BrainUnavailable(f"Groq connection error: {e}") from e
 
     @staticmethod
     def _retry_after(headers: dict, payload: dict) -> float:
@@ -193,7 +231,7 @@ class GroqBrain:
             "max_completion_tokens": min(max_tokens or settings.BRAIN_MAX_TOKENS, 32000),
             "response_format": {"type": "json_object"},
         }
-        last = ""
+        last, last_status = "", 0
         with self._lock:  # one Groq request at a time keeps us inside per-minute limits
             for attempt in range(6):
                 key = self.keys[self._key_idx % len(self.keys)]
@@ -206,6 +244,7 @@ class GroqBrain:
                     log.info("groq usage in=%s out=%s", usage.get("prompt_tokens"), usage.get("completion_tokens"))
                     return _extract_json(choice.get("message", {}).get("content") or "")
                 last = f"Groq error {status}: {json.dumps(data)[:300]}"
+                last_status = status
                 if status == 429 or status >= 500:
                     wait = min(self._retry_after(headers, data), 45.0)
                     if len(self.keys) > 1:
@@ -216,6 +255,8 @@ class GroqBrain:
                     time.sleep(wait)
                     continue
                 break
+        if last_status in (401, 403, 429) or last_status >= 500:
+            raise BrainUnavailable(last)
         raise BrainError(last)
 
 
@@ -230,7 +271,7 @@ class BedrockConverseBrain:
 
         self.client = boto3.client(
             "bedrock-runtime", region_name=settings.BEDROCK_REGION,
-            config=Config(read_timeout=900, connect_timeout=30, retries={"max_attempts": 3, "mode": "adaptive"}),
+            config=Config(read_timeout=60, connect_timeout=8, retries={"max_attempts": 1, "mode": "standard"}),  # streaming: per-chunk timeout
         )
         self.model = settings.BEDROCK_MODEL
         self._thinking_supported = True
@@ -248,7 +289,7 @@ class BedrockConverseBrain:
 
     def complete_json(self, system: str, user: str, max_tokens: int | None = None,
                       attachments: list[Attachment] | None = None) -> dict:
-        from botocore.exceptions import ClientError
+        from botocore.exceptions import ClientError, ConnectTimeoutError, EndpointConnectionError, ReadTimeoutError
 
         kwargs: dict[str, Any] = dict(
             modelId=self.model,
@@ -274,8 +315,12 @@ class BedrockConverseBrain:
                 kwargs.pop("additionalModelRequestFields", None)
                 kwargs["inferenceConfig"]["temperature"] = 0.3
                 text, stop = self._stream(kwargs)
+            elif e.response.get("Error", {}).get("Code") in _BEDROCK_UNAVAILABLE:
+                raise BrainUnavailable(f"Bedrock {e.response['Error']['Code']}: {str(e)[:200]}") from e
             else:
                 raise BrainError(f"Bedrock error: {e}") from e
+        except (EndpointConnectionError, ReadTimeoutError, ConnectTimeoutError) as e:
+            raise BrainUnavailable(f"Bedrock connection error: {e}") from e
         if stop == "max_tokens":
             raise BrainError("The model output was truncated (max_tokens). Increase KAVACH_BRAIN_MAX_TOKENS.")
         return _extract_json(text)
@@ -297,16 +342,8 @@ class BedrockConverseBrain:
         return "".join(parts), stop
 
 
-_QUOTA_MARKERS = ("too many tokens", "too many requests", "throttlingexception", "use case details", "groq error 429",
-                  "groq error 401", "groq error 403", "groq connection error",
-                  "not available for this account", "accessdeniedexception", "serviceunavailable",
-                  "rate_limit", "overloaded", "credit balance", "authentication_error", "invalid x-api-key",
-                  "permission_error", "billing")
-
-
 def _is_quota_error(e: Exception) -> bool:
-    msg = str(e).lower()
-    return any(m in msg for m in _QUOTA_MARKERS)
+    return isinstance(e, BrainUnavailable)
 
 
 class FallbackBrain:
@@ -412,12 +449,20 @@ def brain_used() -> str:
 def complete_json_with_retry(system: str, user: str, max_tokens: int | None = None, attempts: int = 2,
                              attachments: list[Attachment] | None = None) -> dict:
     last: Exception | None = None
+    if not _daily_budget_ok():
+        from .mock import MockBrain
+
+        log.warning("daily LLM budget reached; using the offline brain")
+        out = MockBrain().complete_json(system, user, max_tokens, attachments=attachments)
+        if isinstance(out, dict):
+            out.setdefault("_brain", "offline")
+        return out
     for i in range(attempts):
         try:
             return brain.complete_json(system, user, max_tokens, attachments=attachments)
         except (json.JSONDecodeError, BrainError) as e:  # retry malformed JSON once
             last = e
             log.warning("brain attempt %d failed: %s", i + 1, e)
-            if isinstance(e, BrainError) and "refusal" in str(e):
+            if isinstance(e, BrainUnavailable) or (isinstance(e, BrainError) and "refusal" in str(e)):
                 break
     raise BrainError(f"Brain AI failed: {last}")

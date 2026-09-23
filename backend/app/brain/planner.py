@@ -2,6 +2,7 @@
 Validates / normalises model output into the typed contract in app/models.py."""
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -252,13 +253,51 @@ def build_teaching_plan(
     if len(context) < 400:  # tiny excerpt: give the brain more of the document
         context = ex.full_text(40000)
     attachments = _page_attachments(pdf_path, pages, ex.page_count)
-    raw = complete_json_with_retry(
-        prompts.PLAN_SYSTEM,
-        prompts.plan_user(topic, topic_map, context, ai_enhanced, feedback, previous_plan,
-                          image_pages=[a["page"] for a in attachments], language=language),
-        attachments=attachments,
-    )
-    return normalise_plan(raw, topic, ex.page_count)
+    user = prompts.plan_user(topic, topic_map, context, ai_enhanced, feedback, previous_plan,
+                             image_pages=[a["page"] for a in attachments], language=language)
+    raw = complete_json_with_retry(prompts.PLAN_SYSTEM, user, attachments=attachments)
+    plan = normalise_plan(raw, topic, ex.page_count)
+    issues = validate_plan(plan, ai_enhanced)
+    if issues and plan.brain != "offline":
+        # one repair round: show the model exactly what is wrong
+        log.info("plan for %s has issues, asking for a revision: %s", topic.get("topic_id"), issues)
+        nl = chr(10)
+        repair = (user + nl + nl + "YOUR PREVIOUS ANSWER HAD THESE PROBLEMS - fix all of them and return the "
+                  "complete corrected plan JSON:" + nl + "- " + (nl + "- ").join(issues) + nl + nl
+                  + "Previous answer:" + nl + json.dumps(plan.model_dump(exclude={"brain"}))[:30000])
+        try:
+            raw2 = complete_json_with_retry(prompts.PLAN_SYSTEM, repair, attachments=attachments)
+            plan2 = normalise_plan(raw2, topic, ex.page_count)
+            issues2 = validate_plan(plan2, ai_enhanced)
+            if len(issues2) <= len(issues):
+                plan, issues = plan2, issues2
+        except Exception as e:  # noqa: BLE001 - keep the first plan
+            log.warning("plan repair failed: %s", e)
+    plan.quality_issues = issues
+    return plan
+
+
+def validate_plan(plan: TeachingPlan, ai_enhanced: bool = False) -> list[str]:
+    """Cheap checks that catch the common model mistakes before we spend time rendering."""
+    issues: list[str] = []
+    for p in plan.parts:
+        words = sum(len(s.narration.split()) for s in p.scenes)
+        if words < 60:
+            issues.append(f"Part {p.part} narration is only {words} words (~{int(words / 2.5)} s); "
+                          f"write 75-140 words so the short lasts 30-60 seconds")
+        elif words > 170:
+            issues.append(f"Part {p.part} narration is {words} words; keep it under 150 so the short stays under 60 s")
+        if len(p.scenes) < 3:
+            issues.append(f"Part {p.part} has {len(p.scenes)} scene(s); use 3-6 scenes that build the idea step by step")
+        if not any(s.elements for s in p.scenes):
+            issues.append(f"Part {p.part} draws nothing; every scene needs visual elements")
+        if p.quick_check is None:
+            issues.append(f"Part {p.part} has no quick_check question")
+        elif len(p.quick_check.options) != 4:
+            issues.append(f"Part {p.part} quick_check needs exactly 4 options")
+        if not ai_enhanced and p.ai_added_context:
+            issues.append(f"Part {p.part} lists ai_added_context in PDF-only mode; teach only what the PDF says")
+    return issues
 
 
 # ------------------------------------------------------------------ follow-up Q&A
